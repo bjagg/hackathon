@@ -3,6 +3,7 @@
 from fastapi import FastAPI, HTTPException, Query
 
 from app.entitlements import ENTITLEMENTS
+from app.tree import build_tree, query_subtree, list_paths, load_index_markdown
 from app.models import (
     AuditEntry,
     ContextBundle,
@@ -165,6 +166,60 @@ def revoke_grant_endpoint(grant_id: str):
     if not ok:
         raise HTTPException(status_code=404, detail="Grant not found")
     return {"status": "revoked", "grant_id": grant_id}
+
+
+# --- Domain tree index (INDEX.md) ---
+
+
+@app.get("/tree/{subject}")
+def tree_endpoint(subject: str, depth: int = Query(default=-1)):
+    """Full domain tree with rollup stats. Rebuilds and persists INDEX.md."""
+    root = build_tree(subject)
+    return root.to_dict(depth=depth)
+
+
+@app.get("/tree/{subject}/markdown")
+def tree_markdown_endpoint(subject: str):
+    """Read INDEX.md as rendered markdown."""
+    # Ensure it's up to date
+    build_tree(subject)
+    md = load_index_markdown(subject)
+    if md is None:
+        raise HTTPException(status_code=404, detail="No index found")
+    return {"document": "INDEX", "markdown": md}
+
+
+@app.get("/tree/{subject}/ascii")
+def tree_ascii_endpoint(subject: str):
+    """ASCII rendering of the domain tree."""
+    root = build_tree(subject)
+    lines = [f"{root.name}  (total={root.total_sections})"]
+    children = sorted(root.children.values(), key=lambda c: c.name)
+    for i, child in enumerate(children):
+        lines.append(child.to_ascii("", i == len(children) - 1))
+    return {"tree": "\n".join(lines)}
+
+
+@app.get("/tree/{subject}/paths")
+def tree_paths_endpoint(subject: str):
+    """List all domain paths that contain sections."""
+    return {"paths": list_paths(subject)}
+
+
+@app.get("/tree/{subject}/at/{path:path}")
+def tree_subtree_endpoint(subject: str, path: str, depth: int = Query(default=-1)):
+    """Query a specific subtree by domain path."""
+    node = query_subtree(subject, path)
+    if node is None:
+        raise HTTPException(status_code=404, detail=f"Path '{path}' not found in tree")
+    return node.to_dict(depth=depth)
+
+
+@app.post("/tree/{subject}/rebuild")
+def tree_rebuild_endpoint(subject: str):
+    """Force rebuild INDEX.md from canonical documents."""
+    root = build_tree(subject)
+    return {"status": "rebuilt", "total_sections": root.total_sections}
 
 
 # --- Audit ---

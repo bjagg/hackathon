@@ -1,6 +1,7 @@
-"""Client demo — Entitlement-based access to Portable Learner Memory.
+"""Client demo — Domain tree index with rollup statistics.
 
-Demonstrates least-privilege grants scoped by entitlement, requester, and duration.
+Populates learner memory with domain paths, then queries the derived tree
+to show hierarchical rollups, subtree queries, and ASCII visualization.
 """
 
 import httpx
@@ -12,7 +13,7 @@ BASE = "http://localhost:8000"
 client = httpx.Client(base_url=BASE, timeout=10)
 
 SUBJECT = "learner_maya_2026"
-W = 78
+W = 80
 
 
 def banner(msg):
@@ -30,13 +31,14 @@ def indent(text, prefix="  "):
 
 def check(resp, expected=200):
     if resp.status_code != expected:
-        print(f"  FAIL {resp.status_code}: {resp.text[:200]}")
+        print(f"  FAIL {resp.status_code}: {resp.text[:300]}")
         sys.exit(1)
 
 
-def create(doc, heading, kind, content, **kw):
+def create(doc, heading, kind, domain_path, content, **kw):
     payload = {
-        "document": doc, "heading": heading, "kind": kind, "content": content,
+        "document": doc, "heading": heading, "kind": kind,
+        "domain_path": domain_path, "content": content,
         "declared_by": kw.get("declared_by", "user"),
         "provenance": kw.get("provenance", "explicit_statement"),
         "confidence": kw.get("confidence", 1.0),
@@ -50,344 +52,358 @@ def create(doc, heading, kind, content, **kw):
     return resp.json()["id"]
 
 
-def show_doc(doc_type):
-    resp = client.get(f"/docs/{SUBJECT}/{doc_type}/markdown")
-    check(resp)
-    indent(resp.json()["markdown"])
-
-
-def show_bundle(bundle):
-    print(f"\n  Bundle:      {bundle['bundle_id']}")
-    print(f"  Entitlement: {bundle['entitlement']}")
-    print(f"  Requester:   {bundle['requester']}")
-    print(f"  Grant:       {bundle['grant_id']}")
-    print(f"  Expires:     {bundle.get('allowed_until', 'N/A')}")
-    print(f"  Items:       {len(bundle['items'])}")
-    if bundle["redacted_documents"]:
-        print(f"  Redacted docs:  {bundle['redacted_documents']}")
-    if bundle["redacted_kinds"]:
-        print(f"  Redacted kinds: {bundle['redacted_kinds']}")
-    print()
-    for item in bundle["items"]:
-        preview = item["content"][:100].replace("\n", " ")
-        print(f"    [{item['document']:8s}] {item['heading'][:42]:42s}  {item['kind']:18s} conf={item['confidence']}")
-        print(f"             {preview}...")
-
-
 # ═══════════════════════════════════════════════════════════════════════
-banner("STEP 1: Populate learner memory across all 6 documents")
+banner("STEP 1: Populate memory with domain-path-tagged sections")
 # ═══════════════════════════════════════════════════════════════════════
 
-# --- AGENTS ---
-create("AGENTS", "District AI Usage Policy", "policy",
+# --- AGENTS (general policies, no specific academic domain) ---
+create("AGENTS", "District AI Usage Policy", "policy", "general/policy",
     "Per District 456 AI Usage Policy v2 (effective February 2026): No AI-generated "
-    "content may be presented to students as instructional material without prior teacher "
-    "review and approval. AI tutoring systems may ask questions and provide hints but must "
-    "not generate full explanations or worked solutions autonomously. All AI interactions "
-    "must be logged and available for teacher review within 24 hours.",
-    declared_by="institution", provenance="district_policy",
-    source_ref="district_456_ai_policy_v2", classification="restricted")
+    "content may be presented to students without prior teacher review. AI tutoring systems "
+    "may ask questions and provide hints but must not generate full explanations autonomously.",
+    declared_by="institution", provenance="district_policy", classification="restricted")
 
-create("AGENTS", "Data Sharing Constraints", "constraint",
-    "Maya's parent has specified that no learning data may be shared with third-party "
-    "tools without explicit per-tool consent. Health-related information (including anxiety "
-    "indicators and stress responses) must never be shared outside the primary learning "
-    "platform and the school counselor. Assessment raw scores may be shared with authorized "
-    "tutoring tools but only in aggregate form, not item-level responses.",
-    declared_by="guardian", provenance="parent_data_agreement",
-    source_ref="consent_form_2026_01_20", classification="restricted")
+create("AGENTS", "Data Sharing Constraints", "constraint", "general/policy",
+    "No learning data shared with third-party tools without explicit per-tool consent. "
+    "Health-related information must never be shared outside the primary platform and "
+    "school counselor. Assessment raw scores shared only in aggregate form.",
+    declared_by="guardian", provenance="parent_data_agreement", classification="restricted")
 
-create("AGENTS", "Session Interaction Protocol", "policy",
-    "When interacting with Maya, AI agents should: (1) Never use language that implies "
-    "judgment about intelligence or ability — use growth-oriented framing. (2) Always "
-    "offer a hint before revealing an answer. (3) If Maya appears disengaged (response "
-    "time > 2 minutes or three consecutive skips), gently suggest a break or topic change "
-    "rather than pushing forward. (4) Begin each session by acknowledging where she left "
-    "off last time. (5) End each session with a brief summary of what was accomplished.",
-    declared_by="tutor", provenance="tutor_guidelines", source_ref="mr_okafor_session_protocol")
-print("  AGENTS.md: 3 sections")
+create("AGENTS", "Session Interaction Protocol", "policy", "general/interaction",
+    "AI agents should: (1) Use growth-oriented framing. (2) Offer hints before answers. "
+    "(3) Suggest breaks if disengaged. (4) Begin sessions by acknowledging prior work. "
+    "(5) End with a summary and specific praise.",
+    declared_by="tutor", provenance="tutor_guidelines")
+print("  AGENTS: 3 sections (general/policy, general/interaction)")
 
 # --- SOUL ---
-create("SOUL", "Learning Philosophy", "belief",
-    "Maya believes that understanding why something works matters more than getting the "
-    "right answer quickly. In a goal-setting conversation she said: 'I don't want to just "
-    "memorize steps — I want to actually get it.' She has expressed frustration with "
-    "platforms that reward speed over understanding, and she gravitates toward tools that "
-    "let her explore concepts at her own pace.",
-    provenance="student_goal_setting", source_ref="session_2026_03_03_goals")
+create("SOUL", "Learning Philosophy", "belief", "general/identity",
+    "Maya believes understanding why something works matters more than getting the right "
+    "answer quickly. She said: 'I don't want to just memorize steps — I want to actually "
+    "get it.' She gravitates toward tools that let her explore at her own pace.",
+    provenance="student_goal_setting")
 
-create("SOUL", "Relationship to Challenge", "trait",
-    "Maya has a complicated relationship with difficulty. She genuinely wants to tackle "
-    "hard problems and expresses pride when she solves something challenging. However, she "
-    "has a low tolerance for sustained confusion — if she cannot make progress within about "
-    "90 seconds, her confidence drops quickly. Her tutor describes her as 'brave but brittle' "
-    "when it comes to mathematical challenge.",
-    declared_by="tutor", provenance="tutor_observation", source_ref="mr_okafor_notes_2026_03")
+create("SOUL", "Relationship to Challenge", "trait", "general/identity",
+    "Maya genuinely wants to tackle hard problems but has low tolerance for sustained "
+    "confusion. If she can't make progress within 90 seconds, confidence drops quickly. "
+    "Her tutor describes her as 'brave but brittle.' She thrives with scaffolded challenges.",
+    declared_by="tutor", provenance="tutor_observation")
 
-create("SOUL", "Core Values in Learning", "value",
-    "Fairness and effort matter deeply to Maya. She becomes upset when she perceives that "
-    "a system is not giving her credit for partial understanding. She has said: 'It's not "
-    "fair that I get zero points when I knew most of it.' She values being seen for her "
-    "process, not just her product. She also cares about helping others — she voluntarily "
-    "explains fraction operations to her study group peers.",
-    declared_by="tutor", provenance="classroom_observation", source_ref="teacher_notes_2026_02")
-print("  SOUL.md: 3 sections")
+create("SOUL", "Core Values", "value", "general/identity",
+    "Fairness and effort matter deeply. She becomes upset when not credited for partial "
+    "understanding. She values being seen for her process, not just product. She "
+    "voluntarily helps peers and takes pride in their success.",
+    declared_by="tutor", provenance="classroom_observation")
+print("  SOUL: 3 sections (general/identity)")
 
 # --- IDENTITY ---
-create("IDENTITY", "School and Grade", "fact",
-    "Maya is an 11-year-old 6th grader at Riverside Middle School in District 456. She "
-    "transferred from Oak Park Elementary at the start of the 2025-2026 school year. She "
-    "was in the advanced math track at her previous school but has been placed in the "
-    "general math track at Riverside due to different placement criteria. Her parent noted "
-    "that Maya has an older sibling who struggled with math anxiety.",
-    declared_by="guardian", provenance="parent_onboarding", source_ref="onboarding_form_2026_01_15")
+create("IDENTITY", "School and Grade", "fact", "general/demographics",
+    "11-year-old 6th grader at Riverside Middle School, District 456. Transferred from "
+    "Oak Park Elementary. Was in advanced math track previously, now in general track "
+    "at Riverside due to different placement criteria.",
+    declared_by="guardian", provenance="parent_onboarding")
 
-create("IDENTITY", "Current Academic Goals", "goal",
-    "During a goal-setting conversation on March 3, Maya said she wants to get back into "
-    "the advanced math track by next school year. She identified two specific targets: "
-    "'I want to be able to do the word problems without getting confused' and 'I want to "
-    "understand the fraction stuff with variables.' Her teacher framed these as improving "
-    "word-problem translation to 0.75+ and rational expressions to 0.70+ by semester end.",
-    provenance="student_goal_setting", source_ref="session_2026_03_03_goals")
+create("IDENTITY", "Math Goals", "goal", "math",
+    "Wants to return to the advanced math track by next year. Specific targets: "
+    "word-problem translation to 0.75+ and rational expressions to 0.70+ by semester end. "
+    "Asked to do extra practice on weekends.",
+    provenance="student_goal_setting")
 
-create("IDENTITY", "Key Relationships", "relationship",
-    "Maya works with tutor Mr. Okafor twice weekly (Tuesdays and Thursdays). She responds "
-    "well to his approach of narrating his own problem-solving thinking aloud. She has "
-    "expressed reluctance to work with substitute tutors. Maya also participates in a "
-    "small peer study group with Aiden and Priya on Fridays, where she often takes on the "
-    "role of explaining fraction operations to the others.",
-    declared_by="tutor", provenance="tutor_session_notes",
-    source_ref="session_2026_03_07_notes", confidence=0.85, classification="restricted")
-print("  IDENTITY.md: 3 sections")
+create("IDENTITY", "Reading Goals", "goal", "reading",
+    "Wants to improve independent reading stamina. Currently comfortable with 15-minute "
+    "silent reading blocks, targeting 25 minutes by end of semester. Prefers to build up "
+    "gradually rather than being forced into longer sessions.",
+    provenance="student_goal_setting")
+
+create("IDENTITY", "Key Relationships", "relationship", "general/social",
+    "Works with tutor Mr. Okafor twice weekly. Strong rapport. Participates in peer study "
+    "group with Aiden and Priya on Fridays. Takes on the role of explaining fractions.",
+    declared_by="tutor", provenance="tutor_session_notes", confidence=0.85, classification="restricted")
+print("  IDENTITY: 4 sections (general/demographics, math, reading, general/social)")
 
 # --- USER ---
-create("USER", "Learning Modality Preferences", "preference",
-    "Maya strongly prefers seeing a fully worked example before attempting a new problem "
-    "type. During a March 2 tutoring session she said: 'I need to see how someone else "
-    "does it first, then I can try.' She also prefers audiobooks and read-aloud modes — "
-    "her reading comprehension scores are approximately 15% higher on passages she listens "
-    "to versus reads silently.",
-    provenance="tutor_observation", source_ref="session_2026_03_02_tutoring")
+create("USER", "Math Learning Preferences", "preference", "math",
+    "Strongly prefers worked examples before attempting new problem types. Said: 'I need "
+    "to see how someone else does it first.' Disengages when skipped straight to practice. "
+    "Re-engages once a step-by-step solution is demonstrated.",
+    provenance="tutor_observation")
 
-create("USER", "Extended Time Accommodation", "accessibility",
-    "Maya has a documented accommodation for extended time (1.5x) on all timed activities, "
-    "per her IEP updated January 2026. Her parent emphasized that time pressure causes "
-    "significant anxiety. The accommodation applies to quizzes, tests, and any timed "
-    "practice mode. Countdown timers should not be displayed unless Maya explicitly opts in.",
-    declared_by="guardian", provenance="iep_accommodation", source_ref="iep_accommodation_2026_01")
+create("USER", "Reading Preferences", "preference", "reading",
+    "Prefers audiobooks and read-aloud modes. Comprehension scores ~15% higher on listened "
+    "passages vs. silent reading. Not a decoding issue — reads at grade level — appears to "
+    "be a strong auditory processing preference.",
+    provenance="tutor_observation")
 
-create("USER", "Communication Style", "preference",
-    "Maya responds best to warm, encouraging language that acknowledges effort. She shuts "
-    "down when feedback feels clinical or evaluative. Effective: 'You're on the right track "
-    "— let's look at this one part together.' She has explicitly asked not to be told "
-    "'That's easy' or 'You should know this by now.'",
-    declared_by="tutor", provenance="tutor_observation", source_ref="mr_okafor_notes_2026_02")
-print("  USER.md: 3 sections")
+create("USER", "Extended Time Accommodation", "accessibility", "general/accommodations",
+    "Documented 1.5x extended time on all timed activities (IEP, January 2026). Time "
+    "pressure causes significant anxiety. Countdown timers should not display unless Maya "
+    "explicitly opts in.",
+    declared_by="guardian", provenance="iep_accommodation")
+
+create("USER", "Communication Style", "preference", "general/interaction",
+    "Responds to warm, encouraging language. Shuts down with clinical feedback. Effective: "
+    "'You're on the right track — let's look at this part together.' Never say 'That's easy' "
+    "or 'You should know this by now.'",
+    declared_by="tutor", provenance="tutor_observation")
+print("  USER: 4 sections (math, reading, general/accommodations, general/interaction)")
 
 # --- TOOLS ---
-create("TOOLS", "Fantasy Academy — AI Tutor", "tool_config",
-    "Fantasy Academy is authorized as Maya's primary AI tutoring platform for math, "
-    "approved by District 456 on February 10, 2026. Sessions are 30 minutes, Tuesday and "
-    "Thursday, following Mr. Okafor's tutoring sessions. The tool should use the session "
-    "interaction protocol defined in AGENTS.md. API integration uses OAuth2.",
-    declared_by="institution", provenance="district_tool_approval",
-    source_ref="tool_approval_2026_02_10", classification="restricted")
+create("TOOLS", "Fantasy Academy — AI Tutor", "tool_config", "math",
+    "Primary AI tutoring platform for math. District-approved. Sessions: 30 min, Tue/Thu. "
+    "Operates under district AI policy. OAuth2 integration.",
+    declared_by="institution", provenance="district_tool_approval", classification="restricted")
 
-create("TOOLS", "MathWorld — Adaptive Practice", "tool_config",
-    "MathWorld is authorized for adaptive practice sessions, approved by Maya's parent "
-    "on March 1, 2026. The tool adapts difficulty in real-time and should reduce difficulty "
-    "immediately upon detecting disengagement. Practice sessions are self-paced with a "
-    "recommended 20-minute limit. Parent has requested weekly progress reports.",
-    declared_by="guardian", provenance="parent_tool_approval",
-    source_ref="parent_consent_2026_03_01", classification="restricted")
+create("TOOLS", "MathWorld — Adaptive Practice", "tool_config", "math",
+    "Adaptive practice engine. Parent-approved. Broader access than Fantasy Academy. "
+    "Adapts difficulty in real-time. 20-minute recommended limit. Weekly progress reports.",
+    declared_by="guardian", provenance="parent_tool_approval", classification="restricted")
 
-create("TOOLS", "Riverside SIS Integration", "integration",
-    "Maya's official records are maintained in the Riverside Middle School SIS (PowerSchool). "
-    "Grade data, attendance, and formal assessment scores sync nightly. IEP accommodations "
-    "are sourced from the SIS and should be treated as authoritative.",
-    declared_by="institution", provenance="sis_integration_config",
-    source_ref="sis_config_2026_01", classification="restricted")
-print("  TOOLS.md: 3 sections")
+create("TOOLS", "ReadAlong — Audio Reader", "tool_config", "reading",
+    "Audio-assisted reading platform. Provides synchronized text highlighting with audio. "
+    "Parent-approved for independent reading sessions. Tracks comprehension via embedded "
+    "questions after each chapter.",
+    declared_by="guardian", provenance="parent_tool_approval", classification="restricted")
 
-# --- MEMORY ---
-create("MEMORY", "Math Mastery Snapshot — March 2026", "mastery",
-    "Based on the March 1 adaptive assessment (42 items, 35 minutes):\n"
-    "- Fractions operations: 0.91 — Strong fluency. Minor hesitation on division by mixed numbers.\n"
-    "- Linear equations: 0.82 — Solves one- and two-step equations reliably.\n"
-    "- Rational expressions: 0.55 — Emerging but inconsistent.\n"
-    "- Word problem translation: 0.48 — Difficulty converting narrative to algebraic expressions.",
-    declared_by="system", provenance="assessment_result",
-    source_ref="assessment_2026_03_01", confidence=0.9, classification="restricted")
+create("TOOLS", "Riverside SIS", "integration", "general/systems",
+    "Official records in PowerSchool. Nightly sync of grades, attendance, assessments. "
+    "IEP data is authoritative — SIS version takes precedence if conflicts.",
+    declared_by="institution", provenance="sis_integration_config", classification="restricted")
+print("  TOOLS: 4 sections (math, reading, general/systems)")
 
-error_pattern_id = create("MEMORY", "Error Pattern — Multi-step Word Problems", "error_pattern",
-    "Across three recent quizzes and one tutoring session, Maya shows a recurring pattern "
-    "with multi-step word problems. She correctly identifies the relevant quantities but "
-    "frequently sets up the relationships incorrectly when the problem requires more than "
-    "two steps. In quiz 882 she solved 4/5 one-step problems but 1/4 multi-step problems. "
-    "She tends to start solving before fully reading the problem.",
+# --- MEMORY: Math domain (deep hierarchy) ---
+create("MEMORY", "Fractions Mastery", "mastery", "math/fractions",
+    "Fractions operations: 0.91. Strong fluency with addition, subtraction, and "
+    "multiplication. Minor hesitation on division by mixed numbers.",
+    declared_by="system", provenance="assessment_result", confidence=0.91, classification="restricted")
+
+create("MEMORY", "Linear Equations Mastery", "mastery", "math/algebra/linear_equations",
+    "Linear equations: 0.82. Solves one- and two-step equations reliably. Occasionally "
+    "makes sign errors when moving terms across the equals sign.",
+    declared_by="system", provenance="assessment_result", confidence=0.82, classification="restricted")
+
+create("MEMORY", "Rational Expressions Mastery", "mastery", "math/algebra/rational_expressions",
+    "Rational expressions: 0.55. Simplification of basic expressions is emerging but "
+    "inconsistent. Struggles to identify common factors in polynomial numerators.",
+    declared_by="system", provenance="assessment_result", confidence=0.55, classification="restricted")
+
+create("MEMORY", "Word Problem Translation", "mastery", "math/word_problems",
+    "Word problem translation: 0.48. Difficulty converting narrative descriptions into "
+    "algebraic expressions, especially with multiple quantities in a single paragraph.",
+    declared_by="system", provenance="assessment_result", confidence=0.48, classification="restricted")
+
+error_id = create("MEMORY", "Multi-step Word Problem Errors", "error_pattern", "math/word_problems/multi_step",
+    "Recurring pattern: correctly identifies quantities but sets up relationships incorrectly "
+    "when problems require more than two steps. Solved 4/5 one-step but 1/4 multi-step in "
+    "quiz 882. Can solve sub-steps individually but loses track of overall structure.",
     declared_by="system", provenance="derived_from_quiz_history",
-    evidence_refs=["quiz_882", "quiz_901", "quiz_915", "session_2026_03_05"],
-    confidence=0.72, classification="restricted")
+    evidence_refs=["quiz_882", "quiz_901", "quiz_915"], confidence=0.72, classification="restricted")
 
-create("MEMORY", "Engagement Cycle Pattern", "inference",
-    "Analysis of six recent sessions suggests a consistent engagement cycle. Maya starts "
-    "with high energy for 10-12 minutes. Around the 15-minute mark, if she encounters a "
-    "problem she cannot solve within 90 seconds, her response rate drops sharply. If she "
-    "fails two consecutive problems after the 15-minute mark, she tends to disengage "
-    "entirely. Sessions where difficulty was adaptively reduced after the first failure "
-    "showed sustained engagement for the full 30 minutes.",
+create("MEMORY", "Unit Conversion Errors", "error_pattern", "math/word_problems/unit_conversion",
+    "Applies conversion factors backwards in rate problems. Self-corrects when asked to "
+    "re-read the conversion direction. Parent confirmed this has been a persistent issue "
+    "since previous school.",
+    declared_by="system", provenance="session_analysis",
+    evidence_refs=["session_2026_03_09"], confidence=0.8, classification="restricted")
+
+create("MEMORY", "Mixed Number Mechanical Gap", "error_pattern", "math/fractions/mixed_numbers",
+    "Forgets to convert mixed numbers before finding common denominators. Recognized as a "
+    "mechanical gap rather than conceptual — Maya understands the concept but skips the step. "
+    "Peer pointed it out and Maya self-corrected with humor.",
+    declared_by="tutor", provenance="teacher_observation",
+    evidence_refs=["study_group_2026_03_07"], confidence=0.85, classification="restricted")
+print("  MEMORY (math): 7 sections across math/fractions, math/algebra/*, math/word_problems/*")
+
+# --- MEMORY: Math engagement and sessions ---
+create("MEMORY", "Engagement Cycle Pattern", "inference", "math",
+    "Starts sessions with high energy for 10-12 min. At 15-min mark, if stuck for 90s, "
+    "engagement drops. Two consecutive failures = full disengagement. Adaptive difficulty "
+    "reduction after first failure sustains engagement for full 30-min session.",
     declared_by="system", provenance="interaction_pattern_analysis",
-    evidence_refs=["session_2026_03_02", "session_2026_03_05", "session_2026_03_07",
-                   "session_2026_03_09", "quiz_882", "quiz_901"],
+    evidence_refs=["session_2026_03_02", "session_2026_03_05", "session_2026_03_07"],
     confidence=0.68, classification="restricted")
 
-create("MEMORY", "Session Log — March 9 Tutoring", "interaction_event",
-    "March 9 tutoring session with Mr. Okafor (30 min, Fantasy Academy):\n\n"
-    "Maya arrived energized and asked to work on word problems. Problem 1 (two-step, total "
-    "cost with tax): solved correctly in 45 seconds. Problem 2 (unit conversion in a rate "
-    "problem): set up the rate correctly but applied conversion factor backwards; self-"
-    "corrected when asked to re-read. Problem 3 (three-step, percentages + fractions): "
-    "stopped and said 'I don't even know where to start.' Mr. Okafor broke it into sub-"
-    "questions — Maya solved each individually but couldn't reassemble without guidance.\n\n"
-    "By problem 5, Maya was identifying sub-steps herself. Mr. Okafor noted: 'The key "
-    "unlock was asking her to circle each question the problem is really asking before "
-    "she picks up her pencil.'",
+create("MEMORY", "March 9 Tutoring — Word Problems", "interaction_event", "math/word_problems",
+    "Solved two-step cost problem in 45s. Unit conversion rate problem: set up correctly "
+    "but reversed conversion factor, self-corrected on re-read. Three-step percentage/"
+    "fraction problem: couldn't start, but solved each sub-question when broken out. By "
+    "problem 5, identifying sub-steps independently. Key insight: 'circle each question "
+    "the problem is really asking before picking up the pencil.'",
     declared_by="system", provenance="session_transcript_summary",
     source_ref="session_2026_03_09", confidence=0.95, classification="restricted")
 
-create("MEMORY", "Session Log — March 7 Peer Study Group", "interaction_event",
-    "March 7 study group with Aiden and Priya (25 min, classroom):\n\n"
-    "Maya took charge, using a pizza analogy to explain why you can't add fractions with "
-    "different denominators directly. She walked Priya through finding the LCD step by "
-    "step. Teacher noted Maya's explanation was clearer than the textbook's. Maya solved "
-    "3/4 problems correctly but forgot to convert a mixed number before finding the common "
-    "denominator. When Priya pointed it out, Maya laughed: 'I always forget that part.' "
-    "Teacher noted this as a mechanical gap, not a conceptual one.",
+create("MEMORY", "March 7 Peer Study — Fractions", "interaction_event", "math/fractions",
+    "Led study group. Used pizza analogy to explain why you can't add fractions with "
+    "different denominators. Walked Priya through LCD step by step. Teacher noted Maya's "
+    "explanation was clearer than the textbook. Made mixed-number error on last problem.",
     declared_by="tutor", provenance="teacher_observation",
     source_ref="study_group_2026_03_07", confidence=0.9, classification="restricted")
-print("  MEMORY.md: 5 sections")
+print("  MEMORY (math sessions): 3 sections (math, math/word_problems, math/fractions)")
 
-print(f"\n  Total: 20 sections across 6 documents")
+# --- MEMORY: Reading domain ---
+create("MEMORY", "Reading Comprehension", "mastery", "reading/comprehension",
+    "Listening comprehension: 0.78. Silent reading comprehension: 0.63. The gap narrows on "
+    "shorter passages (under 500 words) and widens on longer texts. Strongest on narrative "
+    "fiction, weakest on expository science texts.",
+    declared_by="system", provenance="assessment_result", confidence=0.85, classification="restricted")
+
+create("MEMORY", "Vocabulary Acquisition", "mastery", "reading/vocabulary",
+    "Grade-level vocabulary: 0.71. Above average on context-clue inference but below average "
+    "on morphological analysis (prefixes, suffixes, root words). Responds well to vocabulary "
+    "taught through stories rather than word lists.",
+    declared_by="system", provenance="assessment_result", confidence=0.8, classification="restricted")
+
+create("MEMORY", "Reading Stamina Pattern", "inference", "reading",
+    "Maya maintains focus during audio-assisted reading for 25+ minutes but fatigues during "
+    "silent reading around the 12-minute mark. When she hits the fatigue point, she begins "
+    "re-reading the same paragraph. Gradually increasing silent reading in 2-minute increments "
+    "per week has shown slow but steady improvement.",
+    declared_by="system", provenance="interaction_pattern_analysis",
+    evidence_refs=["session_2026_02_15", "session_2026_02_22", "session_2026_03_01"],
+    confidence=0.7, classification="restricted")
+print("  MEMORY (reading): 3 sections (reading/comprehension, reading/vocabulary, reading)")
+
+# --- MEMORY: Science domain (new, emerging) ---
+create("MEMORY", "Science Initial Assessment", "mastery", "science/life_science",
+    "Life science baseline: 0.62. Strong on classification and observation skills. Weaker "
+    "on experimental design and understanding controlled variables. Teacher noted Maya asks "
+    "excellent 'why' questions but needs support structuring investigations.",
+    declared_by="system", provenance="assessment_result", confidence=0.75, classification="restricted")
+
+create("MEMORY", "Science Curiosity Notes", "interaction_event", "science",
+    "During a March 5 class on ecosystems, Maya asked: 'If you remove one species, how do "
+    "you know which other ones will be affected?' Teacher noted this as a strong systems-"
+    "thinking question beyond typical 6th-grade level. Maya spent 10 extra minutes at lunch "
+    "looking at the food web diagram.",
+    declared_by="tutor", provenance="teacher_observation",
+    source_ref="class_2026_03_05", confidence=0.9, classification="restricted")
+print("  MEMORY (science): 2 sections (science/life_science, science)")
+
+print(f"\n  TOTAL: 27 sections across 6 documents with hierarchical domain paths")
 
 
 # ═══════════════════════════════════════════════════════════════════════
-banner("STEP 2: View the entitlements catalog")
+banner("STEP 2: View the domain tree — ASCII rendering")
 # ═══════════════════════════════════════════════════════════════════════
 
-resp = client.get("/entitlements")
+resp = client.get(f"/tree/{SUBJECT}/ascii")
 check(resp)
-catalog = resp.json()
-
-for name, info in catalog.items():
-    docs = info["allowed_documents"]
-    kinds = info["allowed_kinds"]
-    kind_str = ", ".join(kinds) if isinstance(kinds, list) else kinds
-    print(f"\n  {name}")
-    print(f"    docs:  {docs}")
-    print(f"    kinds: {kind_str}")
-    indent(info["description"], prefix="    ")
+print()
+print(resp.json()["tree"])
 
 
 # ═══════════════════════════════════════════════════════════════════════
-banner("STEP 3: Entitlement-scoped context retrieval")
+banner("STEP 3: List all domain paths")
+# ═══════════════════════════════════════════════════════════════════════
+
+resp = client.get(f"/tree/{SUBJECT}/paths")
+check(resp)
+for p in resp.json()["paths"]:
+    print(f"  {p}")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+banner("STEP 4: Query subtrees with rollup stats")
 # ═══════════════════════════════════════════════════════════════════════
 
 
-# --- Transcript ---
-sub("TRANSCRIPT — requesting without a grant (should be denied)")
+def show_node(label, path):
+    sub(f"{label}: {path}")
+    resp = client.get(f"/tree/{SUBJECT}/at/{path}?depth=1")
+    check(resp)
+    node = resp.json()
+    print(f"\n  Path:        {node['path']}")
+    print(f"  Sections:    {node['total_sections']}")
+    print(f"  Kinds:       {node['kinds_present']}")
+    if "mastery_avg" in node:
+        print(f"  Mastery avg: {node['mastery_avg']}")
+        if node.get("mastery_scores"):
+            for heading, score in node["mastery_scores"].items():
+                print(f"    {heading}: {score}")
+    if "confidence_avg" in node:
+        print(f"  Confidence:  {node['confidence_avg']}")
+    if node.get("error_pattern_count"):
+        print(f"  Errors:      {node['error_pattern_count']}")
+    if node.get("inference_count"):
+        print(f"  Inferences:  {node['inference_count']}")
+    if node.get("interaction_event_count"):
+        print(f"  Events:      {node['interaction_event_count']}")
+
+    if node.get("sections"):
+        print(f"\n  Direct sections at this node:")
+        for s in node["sections"]:
+            print(f"    [{s['document']:8s}] {s['heading'][:45]:45s} {s['kind']:18s} conf={s['confidence']}")
+
+    if node.get("children"):
+        print(f"\n  Children:")
+        for name, child in node["children"].items():
+            stats = []
+            if "mastery_avg" in child:
+                stats.append(f"mastery={child['mastery_avg']}")
+            stats.append(f"sections={child['total_sections']}")
+            if child.get("error_pattern_count"):
+                stats.append(f"errors={child['error_pattern_count']}")
+            print(f"    {name}/  ({', '.join(stats)})")
+
+
+show_node("Full math domain", "math")
+show_node("Math > Algebra subtree", "math/algebra")
+show_node("Math > Word problems", "math/word_problems")
+show_node("Math > Fractions", "math/fractions")
+show_node("Reading domain", "reading")
+show_node("Science domain (newly emerging)", "science")
+show_node("General domain", "general")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+banner("STEP 5: Full tree JSON (depth=2)")
+# ═══════════════════════════════════════════════════════════════════════
+
+resp = client.get(f"/tree/{SUBJECT}?depth=2")
+check(resp)
+tree = resp.json()
+print(f"\n  Root: {tree['name']}")
+print(f"  Total sections: {tree['total_sections']}")
+print(f"  Confidence avg: {tree.get('confidence_avg', 'N/A')}")
+if tree.get("mastery_avg"):
+    print(f"  Mastery avg (all domains): {tree['mastery_avg']}")
+print(f"\n  Top-level domains:")
+for name, child in tree.get("children", {}).items():
+    m = f"  mastery={child['mastery_avg']}" if "mastery_avg" in child else ""
+    print(f"    {name}/  sections={child['total_sections']}{m}")
+    for subname, sub_child in child.get("children", {}).items():
+        sm = f"  mastery={sub_child['mastery_avg']}" if "mastery_avg" in sub_child else ""
+        print(f"      {subname}/  sections={sub_child['total_sections']}{sm}")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+banner("STEP 6: Entitlement-scoped access with tree context")
+# ═══════════════════════════════════════════════════════════════════════
+
+sub("Transcript entitlement — what the tree shows for academic records")
+
+resp = client.post("/grants", json={
+    "subject": SUBJECT, "requester": "new_school_admin",
+    "entitlement": "transcript", "duration_hours": 24,
+    "justification": "Enrollment review",
+})
+check(resp)
 
 resp = client.post("/context", json={
     "subject": SUBJECT, "requester": "new_school_admin", "entitlement": "transcript",
 })
 check(resp)
 bundle = resp.json()
-print(f"\n  Items: {len(bundle['items'])} (no grant = denied)")
-print(f"  Grant ID: {bundle['grant_id']}")
-print(f"  Redacted docs: {bundle['redacted_documents']}")
+print(f"\n  Transcript bundle: {len(bundle['items'])} items (facts + mastery + goals only)")
+for item in bundle["items"]:
+    print(f"    [{item['document']:8s}] {item['heading'][:45]:45s} {item['kind']:10s} conf={item['confidence']}")
 
 
-sub("TRANSCRIPT — grant for 24 hours, new school admin")
-
-resp = client.post("/grants", json={
-    "subject": SUBJECT,
-    "requester": "new_school_admin",
-    "entitlement": "transcript",
-    "duration_hours": 24,
-    "institution": "lincoln_middle_school",
-    "justification": "Student transfer enrollment review",
-})
-check(resp)
-grant = resp.json()
-print(f"\n  Grant:       {grant['id']}")
-print(f"  Entitlement: {grant['entitlement']}")
-print(f"  Requester:   {grant['requester']}")
-print(f"  Duration:    {grant['duration_hours']}h (remaining: {grant['time_remaining']})")
-print(f"  Docs:        {grant['allowed_documents']}")
-print(f"  Kinds:       {grant['allowed_kinds']}")
-print(f"  Justification: {grant['justification']}")
-
-resp = client.post("/context", json={
-    "subject": SUBJECT, "requester": "new_school_admin", "entitlement": "transcript",
-})
-check(resp)
-bundle = resp.json()
-print(f"\n  TRANSCRIPT bundle — least privilege: only facts, mastery, goals from IDENTITY + MEMORY")
-show_bundle(bundle)
-
-
-# --- Tutoring session ---
-sub("TUTORING SESSION — 1 hour grant for Fantasy Academy")
+sub("Assessment entitlement — only accommodations, no mastery data")
 
 resp = client.post("/grants", json={
-    "subject": SUBJECT,
-    "requester": "app_fantasy_academy",
-    "entitlement": "tutoring_session",
-    "duration_hours": 1,
-    "institution": "district_456",
-    "justification": "Scheduled Tuesday algebra tutoring",
-})
-check(resp)
-
-resp = client.post("/context", json={
-    "subject": SUBJECT, "requester": "app_fantasy_academy", "entitlement": "tutoring_session",
-})
-check(resp)
-bundle = resp.json()
-print(f"\n  TUTORING SESSION — preferences, accessibility, mastery, errors, inferences, goals")
-show_bundle(bundle)
-
-
-# --- Adaptive practice (broader) ---
-sub("ADAPTIVE PRACTICE — 24h grant for MathWorld (broader than tutoring)")
-
-resp = client.post("/grants", json={
-    "subject": SUBJECT,
-    "requester": "app_mathworld",
-    "entitlement": "adaptive_practice",
-    "duration_hours": 24,
-    "justification": "Ongoing adaptive practice — parent approved",
-})
-check(resp)
-
-resp = client.post("/context", json={
-    "subject": SUBJECT, "requester": "app_mathworld", "entitlement": "adaptive_practice",
-})
-check(resp)
-bundle = resp.json()
-print(f"\n  ADAPTIVE PRACTICE — includes interaction events and AGENTS policies (more than tutoring)")
-show_bundle(bundle)
-
-
-# --- Assessment (very narrow) ---
-sub("ASSESSMENT — only accessibility + constraints (no learning data)")
-
-resp = client.post("/grants", json={
-    "subject": SUBJECT,
-    "requester": "assessment_platform",
-    "entitlement": "assessment",
-    "duration_hours": 2,
-    "institution": "district_456",
-    "justification": "End-of-quarter math assessment",
+    "subject": SUBJECT, "requester": "assessment_platform",
+    "entitlement": "assessment", "duration_hours": 2,
+    "justification": "Quarter assessment",
 })
 check(resp)
 
@@ -396,40 +412,16 @@ resp = client.post("/context", json={
 })
 check(resp)
 bundle = resp.json()
-print(f"\n  ASSESSMENT — narrowest entitlement: no mastery, no preferences, no behavioral data")
-show_bundle(bundle)
+print(f"\n  Assessment bundle: {len(bundle['items'])} items (accommodations + policies only)")
+for item in bundle["items"]:
+    print(f"    [{item['document']:8s}] {item['heading'][:45]:45s} {item['kind']:10s}")
 
 
-# --- School transfer (broad, time-limited) ---
-sub("SCHOOL TRANSFER — 72h grant for new district")
-
-resp = client.post("/grants", json={
-    "subject": SUBJECT,
-    "requester": "lincoln_district_sis",
-    "entitlement": "school_transfer",
-    "duration_hours": 72,
-    "institution": "lincoln_unified_district",
-    "justification": "Inter-district transfer: placement review and accommodation setup",
-})
-check(resp)
-
-resp = client.post("/context", json={
-    "subject": SUBJECT, "requester": "lincoln_district_sis", "entitlement": "school_transfer",
-})
-check(resp)
-bundle = resp.json()
-print(f"\n  SCHOOL TRANSFER — identity, mastery, goals, accessibility, constraints, relationships")
-show_bundle(bundle)
-
-
-# --- Parent review (broadest) ---
-sub("PARENT REVIEW — full access (inspection right)")
+sub("Parent review — full tree visible")
 
 resp = client.post("/grants", json={
-    "subject": SUBJECT,
-    "requester": "maya_parent",
-    "entitlement": "parent_review",
-    "duration_hours": 720,
+    "subject": SUBJECT, "requester": "maya_parent",
+    "entitlement": "parent_review", "duration_hours": 720,
     "justification": "Standing parental inspection right",
 })
 check(resp)
@@ -439,100 +431,73 @@ resp = client.post("/context", json={
 })
 check(resp)
 bundle = resp.json()
-print(f"\n  PARENT REVIEW — full access to all documents and section kinds")
-show_bundle(bundle)
+print(f"\n  Parent review: {len(bundle['items'])} items (full access)")
 
 
 # ═══════════════════════════════════════════════════════════════════════
-banner("STEP 4: Compare entitlements side by side")
+banner("STEP 7: Correct a section and see the tree update")
 # ═══════════════════════════════════════════════════════════════════════
 
-entitlements_tested = [
-    ("transcript",       "new_school_admin"),
-    ("tutoring_session", "app_fantasy_academy"),
-    ("adaptive_practice","app_mathworld"),
-    ("assessment",       "assessment_platform"),
-    ("school_transfer",  "lincoln_district_sis"),
-    ("parent_review",    "maya_parent"),
-]
+sub("Before correction — math/word_problems/multi_step")
 
-print(f"\n  {'Entitlement':<22s} {'Requester':<25s} {'Items':>5s}  {'Redacted Docs'}")
-print(f"  {'─'*22} {'─'*25} {'─'*5}  {'─'*30}")
-for ent, req in entitlements_tested:
-    resp = client.post("/context", json={
-        "subject": SUBJECT, "requester": req, "entitlement": ent,
-    })
-    b = resp.json()
-    print(f"  {ent:<22s} {req:<25s} {len(b['items']):>5d}  {b['redacted_documents']}")
-
-
-# ═══════════════════════════════════════════════════════════════════════
-banner("STEP 5: Correction, revocation, and audit")
-# ═══════════════════════════════════════════════════════════════════════
-
-sub("Parent corrects an inference in MEMORY")
-
-resp = client.get(f"/sections/{SUBJECT}/MEMORY/{error_pattern_id}")
+resp = client.get(f"/tree/{SUBJECT}/at/math/word_problems")
 check(resp)
-before = resp.json()
-print(f"\n  Section: {before['heading']} (v{before['version']}, conf={before['confidence']})")
+node = resp.json()
+print(f"\n  word_problems/ — errors={node.get('error_pattern_count', 0)}, "
+      f"confidence={node.get('confidence_avg', 'N/A')}")
 
-resp = client.patch(f"/sections/{SUBJECT}/MEMORY/{error_pattern_id}", json={
+resp = client.patch(f"/sections/{SUBJECT}/MEMORY/{error_id}", json={
     "content": (
-        "After discussion with Maya and her parent on March 10, the original inference has been "
-        "refined. Maya does not struggle with all multi-step word problems — she handles them "
-        "well when the steps involve operations she is confident in. The difficulty is specifically "
-        "with problems that require unit conversion or translating between representations. Her "
-        "parent noted that Maya has always found unit conversion confusing. The tutor confirmed "
-        "that when he pre-teaches the conversion step, Maya completes the full problem independently."
+        "CORRECTED: Difficulty is specifically with unit conversion and representation "
+        "translation as intermediate steps, not all multi-step problems. Handles multi-step "
+        "well when steps involve confident operations (fractions, basic linear equations). "
+        "Tutor confirmed pre-teaching conversion step enables independent completion."
     ),
     "confidence": 0.88,
-    "correction_reason": "Parent and tutor clarified after reviewing specific problem examples",
+    "correction_reason": "Parent and tutor clarified after reviewing with learner",
 })
 check(resp)
-after = resp.json()
-print(f"  Corrected: v{before['version']} -> v{after['version']}, conf {before['confidence']} -> {after['confidence']}")
+print(f"  Corrected: confidence 0.72 -> 0.88")
 
+sub("After correction — tree rollup updated")
 
-sub("Revoke transcript grant and verify")
-
-transcript_grants = [g for g in client.get(f"/grants?requester=new_school_admin").json()
-                     if g["entitlement"] == "transcript" and not g["revoked"]]
-grant_id = transcript_grants[0]["id"]
-resp = client.delete(f"/grants/{grant_id}")
+resp = client.get(f"/tree/{SUBJECT}/at/math/word_problems")
 check(resp)
-print(f"\n  Revoked: {grant_id}")
+node = resp.json()
+print(f"\n  word_problems/ — errors={node.get('error_pattern_count', 0)}, "
+      f"confidence={node.get('confidence_avg', 'N/A')}")
 
-resp = client.post("/context", json={
-    "subject": SUBJECT, "requester": "new_school_admin", "entitlement": "transcript",
-})
+resp = client.get(f"/tree/{SUBJECT}/at/math")
 check(resp)
-print(f"  Items after revocation: {len(resp.json()['items'])} (expected 0)")
+math = resp.json()
+print(f"  math/ (rollup) — mastery={math.get('mastery_avg', 'N/A')}, "
+      f"confidence={math.get('confidence_avg', 'N/A')}")
 
 
-sub("All active grants")
+# ═══════════════════════════════════════════════════════════════════════
+banner("STEP 8: View INDEX.md — persisted alongside other documents")
+# ═══════════════════════════════════════════════════════════════════════
 
-resp = client.get(f"/grants?subject={SUBJECT}")
+resp = client.get(f"/tree/{SUBJECT}/markdown")
 check(resp)
-for g in resp.json():
-    status = "REVOKED" if g["revoked"] else ("VALID" if g["valid"] else "EXPIRED")
-    print(f"  [{status:7s}] {g['id']} | {g['entitlement']:20s} | {g['requester']:25s} | {g['time_remaining']}")
+indent(resp.json()["markdown"])
+
+sub("Files on disk")
+import subprocess
+result = subprocess.run(
+    ["ls", "-la", f"memory/subjects/{SUBJECT}/"],
+    capture_output=True, text=True,
+)
+for line in result.stdout.strip().splitlines():
+    print(f"  {line}")
 
 
-sub("Audit trail summary")
-
-resp = client.get(f"/audit?subject={SUBJECT}")
-check(resp)
-entries = resp.json()
-from collections import Counter
-actions = Counter(e["action"] for e in entries)
-print(f"\n  Total entries: {len(entries)}")
-for action, count in actions.most_common():
-    print(f"    {action:25s} {count}")
-
-
+# ═══════════════════════════════════════════════════════════════════════
 banner("DEMO COMPLETE")
-print(f"\n  Entitlement-based, least-privilege access verified across 6 use cases.")
-print(f"  Same learner data, different entitlements = different access scopes.")
-print(f"  Server: {BASE}/docs")
+print(f"\n  27 sections across 6 documents + INDEX.md (7 files on disk).")
+print(f"  INDEX.md auto-rebuilds on every create, update, and delete.")
+print(f"  Human-readable markdown with ASCII tree, rollup tables, mastery bars.")
+print(f"  Machine-readable YAML front matter with full tree structure.")
+print(f"\n  Server: {BASE}/docs")
+print(f"  Index:  {BASE}/tree/{SUBJECT}/markdown")
 print()

@@ -128,6 +128,16 @@ def clear_audit_log():
     _audit_log.clear()
 
 
+# --- Index rebuild trigger ---
+
+
+def _rebuild_index(subject: str):
+    """Rebuild INDEX.md after any mutation."""
+    from app.tree import rebuild_index
+    all_secs = list_sections(subject)
+    rebuild_index(subject, all_secs)
+
+
 # --- CRUD operations ---
 
 
@@ -136,6 +146,7 @@ def create_section(subject: str, data: SectionCreate, actor: str = "system") -> 
         document=data.document,
         heading=data.heading,
         kind=data.kind,
+        domain_path=data.domain_path,
         declared_by=data.declared_by,
         provenance=data.provenance,
         source_ref=data.source_ref,
@@ -147,6 +158,7 @@ def create_section(subject: str, data: SectionCreate, actor: str = "system") -> 
     sections = _load_sections(subject, data.document)
     sections.append(section)
     _save_document(subject, data.document, sections)
+    _rebuild_index(subject)
 
     record_audit(
         AuditAction.create, actor, subject,
@@ -204,6 +216,7 @@ def update_section(
     target.updated_at = utcnow()
 
     _save_document(subject, doc_type, sections)
+    _rebuild_index(subject)
 
     detail = f"updated: {list(update_data.keys())}"
     if updates.correction_reason:
@@ -235,6 +248,7 @@ def delete_section(
         target.updated_at = utcnow()
 
     _save_document(subject, doc_type, sections)
+    _rebuild_index(subject)
     record_audit(
         AuditAction.delete, actor, subject,
         document=doc_type, section_id=section_id,

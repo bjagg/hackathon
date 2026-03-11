@@ -80,6 +80,7 @@ class SectionCreate(BaseModel):
     document: DocumentType
     heading: str
     kind: SectionKind
+    domain_path: str = "general"  # e.g. "math/algebra/rational_expressions"
     declared_by: DeclaredBy = DeclaredBy.user
     provenance: str = "explicit_statement"
     source_ref: Optional[str] = None
@@ -91,6 +92,7 @@ class SectionCreate(BaseModel):
 
 class SectionUpdate(BaseModel):
     heading: Optional[str] = None
+    domain_path: Optional[str] = None
     content: Optional[str] = None
     confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
     status: Optional[SectionStatus] = None
@@ -103,6 +105,7 @@ class Section(BaseModel):
     document: DocumentType
     heading: str
     kind: SectionKind
+    domain_path: str = "general"
     declared_by: DeclaredBy
     provenance: str
     source_ref: Optional[str] = None
