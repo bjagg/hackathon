@@ -35,6 +35,7 @@ from app.store import (
 # Pipeline imports
 from app.connectors.schema import NormalizedInteraction
 from app.connectors.canvas_adapter import CanvasAdapter
+from app.connectors.lif_adapter import LIFAdapter, LIFClient, lif_client
 from app.connectors.slack_adapter import SlackAdapter
 from app.daily_logger import daily_logger
 from app.entitlement_service import entitlement_service, EntitlementUpdate
@@ -285,6 +286,62 @@ def ingest_raw_endpoint(payload: RawEventIngest):
     return {
         "source": payload.source,
         "events_received": len(payload.events),
+        "results": [r.model_dump(mode="json") for r in results],
+    }
+
+
+# --- LIF (Learning Information Fabric) ---
+
+
+class LIFIngestRequest(BaseModel):
+    school_id: str
+    user_id: str | None = None  # override user_id for local storage
+    include_proficiencies: bool = False  # can be many — opt-in
+
+
+@app.get("/lif/person/{school_id}")
+def lif_person_endpoint(school_id: str):
+    """Fetch a student record from the LIF GraphQL endpoint."""
+    person = lif_client.fetch_person(school_id)
+    if not person:
+        raise HTTPException(status_code=404, detail=f"Person {school_id} not found in LIF")
+    identity = LIFAdapter.normalize_identity(person)
+    names = person.get("Name", [])
+    return {
+        "name": f"{names[0]['firstName']} {names[0]['lastName']}" if names else "unknown",
+        "identity": identity,
+        "credentials": len(person.get("CredentialAward", [])),
+        "courses": len(person.get("CourseLearningExperience", [])),
+        "proficiencies": len(person.get("Proficiency", [])),
+        "raw": person,
+    }
+
+
+@app.post("/lif/ingest")
+def lif_ingest_endpoint(req: LIFIngestRequest):
+    """Fetch a student from LIF and ingest their records into the memory platform."""
+    person = lif_client.fetch_person(req.school_id)
+    if not person:
+        raise HTTPException(status_code=404, detail=f"Person {req.school_id} not found in LIF")
+
+    user_id = req.user_id or req.school_id
+    interactions = LIFAdapter.normalize_person(person, user_id=user_id)
+
+    # Optionally filter out proficiencies (there can be 100+)
+    if not req.include_proficiencies:
+        interactions = [i for i in interactions if i.event_type != "proficiency"]
+
+    results = memory_pipeline.ingest_batch(interactions)
+
+    identity = LIFAdapter.normalize_identity(person, user_id=user_id)
+    names = person.get("Name", [])
+
+    return {
+        "source": "lif",
+        "school_id": req.school_id,
+        "name": f"{names[0]['firstName']} {names[0]['lastName']}" if names else "unknown",
+        "identity": identity,
+        "events_ingested": len(interactions),
         "results": [r.model_dump(mode="json") for r in results],
     }
 
