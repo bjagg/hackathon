@@ -8,9 +8,11 @@ The compaction process:
 5. Marks the daily log as compacted
 """
 
+import json
 import os
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Protocol
 
 import frontmatter
 from pydantic import BaseModel, Field
@@ -46,14 +48,97 @@ class CompactionResult(BaseModel):
     compacted_memories: list[CompactedMemory] = Field(default_factory=list)
 
 
+class SummaryEnhancer(Protocol):
+    """Protocol for summary enhancement backends."""
+    def enhance(self, decision: MemoryAdmissionDecision,
+                interaction: NormalizedInteraction) -> str: ...
+
+
+class PassthroughEnhancer:
+    """No-op enhancer — returns the steward's summary unchanged."""
+    def enhance(self, decision: MemoryAdmissionDecision,
+                interaction: NormalizedInteraction) -> str:
+        return decision.summary
+
+
+class OllamaSummaryEnhancer:
+    """Uses Ollama to produce richer memory summaries for compaction."""
+
+    def __init__(self, model: str = "llama3.2"):
+        self.model = model
+        self._llm = None
+
+    def _get_llm(self):
+        if self._llm is None:
+            try:
+                from langchain_ollama import ChatOllama
+                self._llm = ChatOllama(model=self.model, temperature=0.2)
+            except Exception:
+                return None
+        return self._llm
+
+    def enhance(self, decision: MemoryAdmissionDecision,
+                interaction: NormalizedInteraction) -> str:
+        llm = self._get_llm()
+        if llm is None:
+            return decision.summary
+
+        try:
+            prompt = (
+                "You are summarizing a learning interaction for a student's portable memory.\n"
+                "Write a concise but rich summary (1-3 sentences) that captures:\n"
+                "- What happened\n"
+                "- What it reveals about the learner's progress\n"
+                "- Any actionable insight for future learning\n\n"
+                f"Event type: {interaction.event_type}\n"
+                f"Source: {interaction.source_system}\n"
+                f"Memory type: {decision.memory_type}\n"
+                f"Original summary: {decision.summary}\n"
+                f"Steward reasoning: {decision.reason_for_decision}\n"
+                f"Payload: {json.dumps(interaction.payload)[:400]}\n\n"
+                "Enhanced summary:"
+            )
+            response = llm.invoke(prompt)
+            enhanced = response.content.strip()
+            if enhanced and len(enhanced) > 10:
+                return enhanced
+        except Exception:
+            pass
+
+        return decision.summary
+
+
+def get_summary_enhancer(backend: str = "auto") -> SummaryEnhancer:
+    """Get the best available summary enhancer."""
+    if backend in ("mock", "passthrough"):
+        return PassthroughEnhancer()
+    if backend in ("ollama", "llm"):
+        return OllamaSummaryEnhancer()
+    if backend == "auto":
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["ollama", "list"], capture_output=True, timeout=3
+            )
+            if result.returncode == 0:
+                return OllamaSummaryEnhancer()
+        except Exception:
+            pass
+    return PassthroughEnhancer()
+
+
 class MemoryCompactor:
     """Compacts daily logs into durable semantic memories."""
 
-    def __init__(self, steward=None, router=None, logger=None, indexer=None):
+    def __init__(self, steward=None, router=None, logger=None, indexer=None,
+                 summary_enhancer=None):
         self.steward = steward or memory_steward
         self.router = router or memory_router
         self.logger = logger or daily_logger
         self.indexer = indexer or embedding_indexer
+        self.summary_enhancer = summary_enhancer or get_summary_enhancer(
+            os.environ.get("COMPACTOR_BACKEND", "passthrough")
+        )
 
     def compact(self, user_id: str, compact_date: date) -> CompactionResult:
         """Compact a day's interactions into semantic memories.
@@ -95,8 +180,20 @@ class MemoryCompactor:
         skipped = 0
         for decision in decisions:
             if decision.store:
+                # Find the matching interaction for context
+                matching = next(
+                    (i for i in interactions
+                     if i.interaction_id == decision.interaction_id),
+                    interactions[0],
+                )
+
+                # Enhance summary via LLM (or passthrough)
+                enhanced_summary = self.summary_enhancer.enhance(
+                    decision, matching
+                )
+
                 memory = CompactedMemory(
-                    summary=decision.summary,
+                    summary=enhanced_summary,
                     memory_type=decision.memory_type,
                     sensitivity=decision.sensitivity,
                     retention_class=decision.retention_class,
@@ -112,6 +209,7 @@ class MemoryCompactor:
                     memory_type=decision.memory_type,
                     scope=decision.shareability,
                     topic=decision.memory_type,
+                    memory_content=enhanced_summary,
                 )
                 self._append_memory(path, user_id, memory)
                 memory.written_to = str(path)

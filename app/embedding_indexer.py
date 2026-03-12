@@ -78,13 +78,47 @@ class SentenceTransformerEmbedder:
         return self.model.encode(texts, normalize_embeddings=True)
 
 
+class OllamaEmbedder:
+    """Ollama-backed embeddings using langchain_ollama.
+
+    Dimension is auto-detected on first call based on the model.
+    """
+
+    def __init__(self, model: str = "llama3.2", base_url: str = "http://localhost:11434"):
+        from langchain_ollama import OllamaEmbeddings
+        self._embeddings = OllamaEmbeddings(model=model, base_url=base_url)
+        self._dim: int | None = None
+
+    @property
+    def dim(self) -> int:
+        if self._dim is None:
+            probe = self._embeddings.embed_documents(["probe"])
+            self._dim = len(probe[0])
+        return self._dim
+
+    def embed(self, texts: list[str]) -> np.ndarray:
+        raw = self._embeddings.embed_documents(texts)
+        arr = np.array(raw, dtype=np.float32)
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        norms = np.where(norms > 0, norms, 1)
+        return arr / norms
+
+
 def get_embedder(backend: str = "auto") -> Embedder:
     """Get the best available embedder."""
     if backend == "hash":
         return HashEmbedder()
     if backend == "sentence_transformer":
         return SentenceTransformerEmbedder()
-    # Auto-detect
+    if backend == "ollama":
+        return OllamaEmbedder()
+    # Auto-detect: try Ollama, then sentence-transformers, then hash
+    try:
+        emb = OllamaEmbedder()
+        emb.dim  # probe to verify connectivity
+        return emb
+    except Exception:
+        pass
     try:
         return SentenceTransformerEmbedder()
     except (ImportError, Exception):
@@ -126,6 +160,35 @@ class EmbeddingIndexer:
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_path ON memory_embeddings(path)
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS index_meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            """)
+        self._check_dimension_consistency()
+
+    def _get_embedder_dim(self) -> int:
+        if hasattr(self.embedder, 'dim'):
+            return self.embedder.dim
+        test = self.embedder.embed(["dimension probe"])
+        return test.shape[1]
+
+    def _check_dimension_consistency(self):
+        """Clear index if embedder dimension changed (e.g. switching backends)."""
+        current_dim = self._get_embedder_dim()
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM index_meta WHERE key = 'embedding_dim'"
+            ).fetchone()
+            stored_dim = int(row[0]) if row else None
+
+            if stored_dim is not None and stored_dim != current_dim:
+                conn.execute("DELETE FROM memory_embeddings")
+            conn.execute(
+                "INSERT OR REPLACE INTO index_meta (key, value) VALUES (?, ?)",
+                ("embedding_dim", str(current_dim)),
+            )
 
     def _conn(self) -> sqlite3.Connection:
         return sqlite3.connect(str(self.db_path))
@@ -175,7 +238,7 @@ class EmbeddingIndexer:
 
             for chunk, embedding in zip(chunks, embeddings):
                 conn.execute(
-                    """INSERT INTO memory_embeddings
+                    """INSERT OR REPLACE INTO memory_embeddings
                     (chunk_id, path, text, owner_id, scope, sensitivity,
                      entitlements, embedding, file_hash, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",

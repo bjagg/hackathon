@@ -141,6 +141,7 @@ class MemoryPipeline:
                     scope=decision.shareability,
                     project_id=interaction.project_id,
                     topic=decision.memory_type,
+                    memory_content=decision.summary,
                 )
                 self.compactor._append_memory(
                     write_path,

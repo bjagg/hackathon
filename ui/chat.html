@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Chat</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117; color: #e6edf3; min-height: 100vh;
+            display: flex; flex-direction: column;
+        }
+
+        /* Header */
+        .header {
+            background: #161b22; border-bottom: 1px solid #30363d;
+            padding: 12px 24px; display: flex; align-items: center; gap: 16px;
+        }
+        .header h1 { font-size: 18px; color: #58a6ff; }
+        .header .subtitle { font-size: 12px; color: #8b949e; }
+        .status-bar {
+            display: flex; gap: 16px; margin-left: auto; font-size: 12px;
+        }
+        .status-bar .indicator {
+            display: flex; align-items: center; gap: 4px;
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+        }
+        .status-dot.green { background: #3fb950; }
+        .status-dot.yellow { background: #d29922; }
+        .status-dot.red { background: #f85149; }
+
+        /* Main layout */
+        .main {
+            display: grid; grid-template-columns: 1fr 340px;
+            flex: 1; overflow: hidden;
+        }
+
+        /* Chat column */
+        .chat-column {
+            display: flex; flex-direction: column; min-height: 0;
+        }
+
+        /* User bar */
+        .user-bar {
+            background: #161b22; border-bottom: 1px solid #30363d;
+            padding: 8px 16px; display: flex; align-items: center; gap: 12px;
+            font-size: 13px;
+        }
+        .user-bar label { color: #8b949e; }
+        .user-bar input, .user-bar select {
+            background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+            color: #e6edf3; padding: 4px 8px; font-size: 13px;
+        }
+        .user-bar input { width: 140px; }
+        .user-bar select { width: 130px; }
+        .btn-sm {
+            background: #21262d; border: 1px solid #30363d; border-radius: 6px;
+            color: #e6edf3; padding: 4px 10px; font-size: 12px; cursor: pointer;
+        }
+        .btn-sm:hover { background: #30363d; }
+
+        /* Messages */
+        .messages {
+            flex: 1; overflow-y: auto; padding: 16px;
+            display: flex; flex-direction: column; gap: 12px;
+        }
+        .message {
+            max-width: 80%; padding: 10px 14px; border-radius: 12px;
+            font-size: 14px; line-height: 1.5; word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+        .message.user {
+            background: #1f6feb; color: #fff; align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+        .message.assistant {
+            background: #21262d; color: #e6edf3; align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
+        .message.system {
+            background: transparent; color: #8b949e; align-self: center;
+            font-size: 12px; font-style: italic;
+        }
+        .typing {
+            display: none; align-self: flex-start;
+            color: #8b949e; font-size: 13px; padding: 8px 14px;
+        }
+        .typing.visible { display: flex; align-items: center; gap: 8px; }
+        .typing-dots span {
+            display: inline-block; width: 6px; height: 6px;
+            background: #8b949e; border-radius: 50%;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        /* Input area */
+        .input-area {
+            background: #161b22; border-top: 1px solid #30363d;
+            padding: 12px 16px; display: flex; gap: 8px;
+        }
+        .input-area textarea {
+            flex: 1; background: #0d1117; border: 1px solid #30363d;
+            border-radius: 8px; color: #e6edf3; padding: 10px 14px;
+            font-size: 14px; font-family: inherit; resize: none;
+            min-height: 44px; max-height: 120px;
+        }
+        .input-area textarea:focus { outline: none; border-color: #58a6ff; }
+        .input-area textarea::placeholder { color: #484f58; }
+        .btn-send {
+            background: #238636; border: none; border-radius: 8px;
+            color: #fff; padding: 10px 20px; font-size: 14px;
+            cursor: pointer; font-weight: 500; white-space: nowrap;
+        }
+        .btn-send:hover { background: #2ea043; }
+        .btn-send:disabled { background: #21262d; color: #484f58; cursor: not-allowed; }
+
+        /* Sidebar */
+        .sidebar {
+            background: #161b22; border-left: 1px solid #30363d;
+            display: flex; flex-direction: column; overflow-y: auto;
+        }
+        .sidebar-section {
+            border-bottom: 1px solid #30363d; padding: 12px 16px;
+        }
+        .sidebar-section h3 {
+            font-size: 12px; text-transform: uppercase; color: #8b949e;
+            letter-spacing: 0.5px; margin-bottom: 8px; cursor: pointer;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .sidebar-section h3 .arrow { transition: transform 0.2s; }
+        .sidebar-section h3 .arrow.collapsed { transform: rotate(-90deg); }
+        .sidebar-content { font-size: 13px; color: #c9d1d9; }
+        .sidebar-content.collapsed { display: none; }
+
+        .context-chunk {
+            background: #0d1117; border: 1px solid #30363d; border-radius: 6px;
+            padding: 8px 10px; margin-bottom: 6px; font-size: 12px;
+        }
+        .context-chunk .path { color: #58a6ff; font-size: 11px; margin-bottom: 4px; }
+        .context-chunk .similarity { color: #3fb950; font-size: 11px; float: right; }
+        .context-chunk .text { color: #8b949e; }
+
+        .memory-item {
+            background: #0d1117; border: 1px solid #238636; border-radius: 6px;
+            padding: 8px 10px; margin-bottom: 6px; font-size: 12px;
+        }
+        .memory-item .type-badge {
+            display: inline-block; background: #238636; color: #fff;
+            padding: 1px 6px; border-radius: 4px; font-size: 10px;
+        }
+
+        .step-item {
+            padding: 4px 0; font-size: 12px; color: #8b949e;
+            border-bottom: 1px solid #21262d;
+        }
+        .step-item .step-name { color: #c9d1d9; font-weight: 500; }
+        .step-item .step-time { color: #58a6ff; float: right; }
+
+        /* Toast */
+        .toast {
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+            background: #1f6feb; color: #fff; padding: 10px 20px;
+            border-radius: 8px; font-size: 13px; z-index: 1000;
+            opacity: 0; transition: opacity 0.3s; pointer-events: none;
+        }
+        .toast.visible { opacity: 1; }
+        .toast.error { background: #f85149; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .main { grid-template-columns: 1fr; }
+            .sidebar { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>Memory Chat</h1>
+            <div class="subtitle">Two-LLM governed education assistant</div>
+        </div>
+        <div class="status-bar">
+            <div class="indicator">
+                <div class="status-dot" id="ollamaStatus"></div>
+                <span>Ollama</span>
+            </div>
+            <div class="indicator">
+                <div class="status-dot" id="cloudStatus"></div>
+                <span id="cloudLabel">Cloud LLM</span>
+            </div>
+            <div class="indicator">
+                <div class="status-dot" id="memoryStatus"></div>
+                <span id="memoryCount">0 memories</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="chat-column">
+            <div class="user-bar">
+                <label>User:</label>
+                <input type="text" id="userId" value="student_maya" placeholder="user ID">
+                <label>Sensitivity:</label>
+                <select id="maxSensitivity">
+                    <option value="normal">Normal</option>
+                    <option value="sensitive">Sensitive</option>
+                    <option value="restricted">Restricted</option>
+                </select>
+                <button class="btn-sm" onclick="newSession()">New Session</button>
+                <span id="sessionLabel" style="color:#8b949e; font-size: 11px; margin-left: auto;"></span>
+            </div>
+
+            <div class="messages" id="messages">
+                <div class="message system">
+                    Start a conversation. The local LLM steward will govern what memory
+                    context is shared with the cloud AI, and what from the conversation
+                    becomes durable memory.
+                </div>
+            </div>
+
+            <div class="typing" id="typing">
+                <div class="typing-dots"><span></span><span></span><span></span></div>
+                <span id="typingLabel">Thinking...</span>
+            </div>
+
+            <div class="input-area">
+                <textarea id="chatInput" rows="1" placeholder="Ask about grades, progress, learning..."
+                    onkeydown="handleKey(event)"></textarea>
+                <button class="btn-send" id="sendBtn" onclick="sendMessage()">Send</button>
+            </div>
+        </div>
+
+        <div class="sidebar">
+            <div class="sidebar-section">
+                <h3 onclick="toggleSection('context')">
+                    <span class="arrow" id="contextArrow">&#9660;</span>
+                    Memory Context
+                    <span id="contextCount" style="color:#58a6ff">(0)</span>
+                </h3>
+                <div class="sidebar-content" id="contextPanel">
+                    <div style="color:#484f58">No context retrieved yet</div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3 onclick="toggleSection('memories')">
+                    <span class="arrow" id="memoriesArrow">&#9660;</span>
+                    New Memories
+                    <span id="memoriesCount" style="color:#3fb950">(0)</span>
+                </h3>
+                <div class="sidebar-content" id="memoriesPanel">
+                    <div style="color:#484f58">No memories created yet</div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3 onclick="toggleSection('pipeline')">
+                    <span class="arrow" id="pipelineArrow">&#9660;</span>
+                    Pipeline Steps
+                </h3>
+                <div class="sidebar-content" id="pipelinePanel">
+                    <div style="color:#484f58">Send a message to see pipeline activity</div>
+                </div>
+            </div>
+
+            <div class="sidebar-section">
+                <h3 onclick="toggleSection('governance')">
+                    <span class="arrow" id="governanceArrow">&#9660;</span>
+                    Governance Log
+                </h3>
+                <div class="sidebar-content collapsed" id="governancePanel">
+                    <div style="color:#484f58">No governance decisions yet</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API = '';
+        let sessionId = null;
+        let totalMemories = 0;
+        let useStreaming = true;
+
+        // --- Status check ---
+        async function checkStatus() {
+            try {
+                const res = await fetch(`${API}/pipeline/status`);
+                const data = await res.json();
+                const ollamaDot = document.getElementById('ollamaStatus');
+                const cloudDot = document.getElementById('cloudStatus');
+                const memDot = document.getElementById('memoryStatus');
+
+                // Ollama: check if steward uses LLM
+                ollamaDot.className = 'status-dot green';
+
+                // Cloud: we'll know after first message
+                cloudDot.className = 'status-dot yellow';
+
+                // Memory
+                const chunks = data.index_stats?.total_chunks || 0;
+                memDot.className = 'status-dot green';
+                document.getElementById('memoryCount').textContent = `${chunks} chunks`;
+            } catch {
+                document.getElementById('ollamaStatus').className = 'status-dot red';
+            }
+        }
+
+        // --- Chat ---
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message) return;
+
+            const userId = document.getElementById('userId').value.trim() || 'student_maya';
+            const maxSensitivity = document.getElementById('maxSensitivity').value;
+
+            appendMessage('user', message);
+            input.value = '';
+            input.style.height = 'auto';
+            setInputEnabled(false);
+
+            if (useStreaming) {
+                await sendStreaming(message, userId, maxSensitivity);
+            } else {
+                await sendBlocking(message, userId, maxSensitivity);
+            }
+
+            setInputEnabled(true);
+            input.focus();
+        }
+
+        async function sendBlocking(message, userId, maxSensitivity) {
+            showTyping('Thinking...');
+            try {
+                const res = await fetch(`${API}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        user_id: userId,
+                        session_id: sessionId,
+                        max_sensitivity: maxSensitivity,
+                    }),
+                });
+                hideTyping();
+                const data = await res.json();
+                if (!res.ok) {
+                    showToast(data.detail || 'Chat error', true);
+                    return;
+                }
+                sessionId = data.session_id;
+                updateSessionLabel();
+                appendMessage('assistant', data.message);
+                updateContext(data.context_used || []);
+                updateMemories(data.memories_created || []);
+                updatePipeline(data.steps || []);
+                updateGovernance(data.governance_log || {});
+                updateCloudStatus(true);
+            } catch (e) {
+                hideTyping();
+                showToast('Network error: ' + e.message, true);
+                updateCloudStatus(false);
+            }
+        }
+
+        async function sendStreaming(message, userId, maxSensitivity) {
+            showTyping('Planning context...');
+            try {
+                const res = await fetch(`${API}/chat/stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        user_id: userId,
+                        session_id: sessionId,
+                        max_sensitivity: maxSensitivity,
+                    }),
+                });
+                if (!res.ok) {
+                    hideTyping();
+                    const err = await res.json();
+                    showToast(err.detail || 'Chat error', true);
+                    return;
+                }
+
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let assistantEl = null;
+                let fullText = '';
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop(); // keep incomplete line
+
+                    for (const line of lines) {
+                        if (!line.startsWith('data: ')) continue;
+                        const payload = line.slice(6);
+                        if (payload === '[DONE]') continue;
+
+                        try {
+                            const chunk = JSON.parse(payload);
+
+                            if (chunk.type === 'context') {
+                                updateContext(chunk.chunks || []);
+                                showTyping('Generating response...');
+                            } else if (chunk.type === 'token') {
+                                hideTyping();
+                                if (!assistantEl) {
+                                    assistantEl = appendMessage('assistant', '', true);
+                                }
+                                fullText += chunk.content;
+                                assistantEl.textContent = fullText;
+                                scrollToBottom();
+                                updateCloudStatus(true);
+                            } else if (chunk.type === 'done') {
+                                sessionId = chunk.session_id;
+                                updateSessionLabel();
+                                updateMemories(chunk.memories_created || []);
+                                updateGovernance(chunk.governance_log || {});
+                            }
+                        } catch { /* skip malformed JSON */ }
+                    }
+                }
+            } catch (e) {
+                hideTyping();
+                showToast('Stream error: ' + e.message, true);
+                updateCloudStatus(false);
+            }
+        }
+
+        // --- UI helpers ---
+        function appendMessage(role, content, returnEl = false) {
+            const el = document.createElement('div');
+            el.className = `message ${role}`;
+            el.textContent = content;
+            document.getElementById('messages').appendChild(el);
+            scrollToBottom();
+            if (returnEl) return el;
+        }
+
+        function scrollToBottom() {
+            const msgs = document.getElementById('messages');
+            msgs.scrollTop = msgs.scrollHeight;
+        }
+
+        function showTyping(label) {
+            document.getElementById('typingLabel').textContent = label || 'Thinking...';
+            document.getElementById('typing').className = 'typing visible';
+        }
+        function hideTyping() {
+            document.getElementById('typing').className = 'typing';
+        }
+
+        function setInputEnabled(enabled) {
+            document.getElementById('chatInput').disabled = !enabled;
+            document.getElementById('sendBtn').disabled = !enabled;
+        }
+
+        function handleKey(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+            // Auto-resize textarea
+            const ta = e.target;
+            setTimeout(() => {
+                ta.style.height = 'auto';
+                ta.style.height = Math.min(ta.scrollHeight, 120) + 'px';
+            }, 0);
+        }
+
+        function updateSessionLabel() {
+            const el = document.getElementById('sessionLabel');
+            el.textContent = sessionId ? `Session: ${sessionId.slice(0, 16)}...` : '';
+        }
+
+        function updateCloudStatus(ok) {
+            const dot = document.getElementById('cloudStatus');
+            dot.className = ok ? 'status-dot green' : 'status-dot red';
+        }
+
+        // --- Sidebar updates ---
+        function updateContext(chunks) {
+            const panel = document.getElementById('contextPanel');
+            document.getElementById('contextCount').textContent = `(${chunks.length})`;
+            if (!chunks.length) {
+                panel.innerHTML = '<div style="color:#484f58">No memory context needed</div>';
+                return;
+            }
+            panel.innerHTML = chunks.map(c => `
+                <div class="context-chunk">
+                    <div class="path">${escHtml(c.path)}</div>
+                    <div class="similarity">${(c.similarity * 100).toFixed(0)}%</div>
+                    <div class="text">${escHtml((c.text || '').slice(0, 200))}${c.text?.length > 200 ? '...' : ''}</div>
+                </div>
+            `).join('');
+        }
+
+        function updateMemories(memories) {
+            const panel = document.getElementById('memoriesPanel');
+            totalMemories += memories.length;
+            document.getElementById('memoriesCount').textContent = `(${totalMemories})`;
+            if (!memories.length) {
+                if (totalMemories === 0) {
+                    panel.innerHTML = '<div style="color:#484f58">No memories created yet</div>';
+                }
+                return;
+            }
+            const html = memories.map(m => `
+                <div class="memory-item">
+                    <span class="type-badge">${escHtml(m.type || 'episodic')}</span>
+                    ${escHtml(m.summary || '')}
+                </div>
+            `).join('');
+            // Prepend new memories
+            panel.innerHTML = html + (totalMemories > memories.length ? panel.innerHTML : '');
+        }
+
+        function updatePipeline(steps) {
+            const panel = document.getElementById('pipelinePanel');
+            if (!steps.length) return;
+            panel.innerHTML = steps.map(s => `
+                <div class="step-item">
+                    <span class="step-name">${escHtml(s.step_name)}</span>
+                    <span class="step-time">${s.duration_ms?.toFixed(0) || '?'}ms</span>
+                    <div style="color:#484f58; font-size:11px">${escHtml(s.detail || '')}</div>
+                </div>
+            `).join('');
+        }
+
+        function updateGovernance(log) {
+            const panel = document.getElementById('governancePanel');
+            if (!log || !Object.keys(log).length) return;
+            panel.innerHTML = `<pre style="font-size:11px; color:#8b949e; white-space:pre-wrap; word-break:break-all">${escHtml(JSON.stringify(log, null, 2))}</pre>`;
+        }
+
+        function toggleSection(name) {
+            const panel = document.getElementById(name + 'Panel');
+            const arrow = document.getElementById(name + 'Arrow');
+            panel.classList.toggle('collapsed');
+            arrow.classList.toggle('collapsed');
+        }
+
+        function newSession() {
+            sessionId = null;
+            totalMemories = 0;
+            document.getElementById('messages').innerHTML =
+                '<div class="message system">New session started. Memory context resets.</div>';
+            document.getElementById('contextPanel').innerHTML =
+                '<div style="color:#484f58">No context retrieved yet</div>';
+            document.getElementById('memoriesPanel').innerHTML =
+                '<div style="color:#484f58">No memories created yet</div>';
+            document.getElementById('pipelinePanel').innerHTML =
+                '<div style="color:#484f58">Send a message to see pipeline activity</div>';
+            document.getElementById('governancePanel').innerHTML =
+                '<div style="color:#484f58">No governance decisions yet</div>';
+            document.getElementById('contextCount').textContent = '(0)';
+            document.getElementById('memoriesCount').textContent = '(0)';
+            updateSessionLabel();
+            showToast('New session started');
+        }
+
+        function showToast(msg, isError) {
+            const el = document.getElementById('toast');
+            el.textContent = msg;
+            el.className = isError ? 'toast visible error' : 'toast visible';
+            setTimeout(() => el.className = 'toast', 3000);
+        }
+
+        function escHtml(s) {
+            const d = document.createElement('div');
+            d.textContent = s || '';
+            return d.innerHTML;
+        }
+
+        // --- Init ---
+        checkStatus();
+    </script>
+</body>
+</html>

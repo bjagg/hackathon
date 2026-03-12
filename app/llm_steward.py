@@ -150,7 +150,7 @@ class MockSteward:
 
 
 class LLMSteward:
-    """LLM-backed steward using LangChain for real inference.
+    """LLM-backed steward using Ollama for real inference.
 
     Falls back to MockSteward if the LLM is unavailable.
     """
@@ -164,8 +164,8 @@ class LLMSteward:
     def _get_llm(self):
         if self._llm is None:
             try:
-                from langchain_community.llms import Ollama
-                self._llm = Ollama(model=self.model_name, temperature=0.1)
+                from langchain_ollama import ChatOllama
+                self._llm = ChatOllama(model=self.model_name, temperature=0.1)
             except Exception:
                 return None
         return self._llm
@@ -173,15 +173,17 @@ class LLMSteward:
     def evaluate(self, interactions: list[NormalizedInteraction]) -> list[MemoryAdmissionDecision]:
         llm = self._get_llm()
         if llm is None:
-            # Fall back to mock
             return MockSteward().evaluate(interactions)
 
-        # Build the prompt
+        # Build rich interaction descriptions
         interactions_text = "\n".join(
-            f"- ID: {i.interaction_id}, Source: {i.source_system}, "
-            f"Type: {i.event_type}, Actor: {i.actor}, "
-            f"Sensitivity: {i.sensitivity}, "
-            f"Payload: {json.dumps(i.payload)[:300]}"
+            f"- ID: {i.interaction_id}\n"
+            f"  Source: {i.source_system}\n"
+            f"  Event type: {i.event_type}\n"
+            f"  Actor: {i.actor}\n"
+            f"  User: {i.user_id}\n"
+            f"  Sensitivity: {i.sensitivity}\n"
+            f"  Payload: {json.dumps(i.payload)[:500]}"
             for i in interactions
         )
 
@@ -189,21 +191,23 @@ class LLMSteward:
             f"{self.system_prompt}\n\n"
             f"## Ethics Guidelines\n{self.ethics_prompt}\n\n"
             f"## Interactions to evaluate:\n{interactions_text}\n\n"
-            "Return your evaluation as a JSON array."
+            "IMPORTANT: Grades, scores, quiz results, and submissions with scores "
+            "are academically significant and SHOULD be stored as semantic memories "
+            "with long_term retention.\n\n"
+            "Return ONLY a JSON array with one object per interaction. No other text."
         )
 
         try:
             response = llm.invoke(prompt)
-            # Parse JSON from response
-            json_start = response.find("[")
-            json_end = response.rfind("]") + 1
+            text = response.content if hasattr(response, 'content') else str(response)
+            json_start = text.find("[")
+            json_end = text.rfind("]") + 1
             if json_start >= 0 and json_end > json_start:
-                decisions_data = json.loads(response[json_start:json_end])
+                decisions_data = json.loads(text[json_start:json_end])
                 return [MemoryAdmissionDecision.model_validate(d) for d in decisions_data]
         except Exception:
             pass
 
-        # Fallback to mock on any failure
         return MockSteward().evaluate(interactions)
 
 

@@ -68,6 +68,7 @@ class MemoryRouter:
         scope: str = "private",
         project_id: str | None = None,
         topic: str = "general",
+        memory_content: str = "",
     ) -> Path:
         """Determine which file should receive a new memory."""
         if memory_type == "policy":
@@ -140,4 +141,106 @@ class MemoryRouter:
         return self.daily_log_path(user_id, log_date)
 
 
-memory_router = MemoryRouter()
+class LLMMemoryRouter(MemoryRouter):
+    """LLM-augmented router that uses Ollama to classify memory topics.
+
+    Falls back to the base MemoryRouter logic on any failure.
+    """
+
+    def __init__(self, root: Path | None = None, model: str = "llama3.2"):
+        super().__init__(root)
+        self.model = model
+        self._llm = None
+
+    def _get_llm(self):
+        if self._llm is None:
+            try:
+                from langchain_ollama import ChatOllama
+                self._llm = ChatOllama(model=self.model, temperature=0.0)
+            except Exception:
+                return None
+        return self._llm
+
+    def resolve_write_path(
+        self,
+        user_id: str,
+        memory_type: str = "semantic",
+        scope: str = "private",
+        project_id: str | None = None,
+        topic: str = "general",
+        memory_content: str = "",
+    ) -> Path:
+        # Non-private scopes and policies use fixed paths
+        if memory_type == "policy" or scope in ("project", "team", "global"):
+            return super().resolve_write_path(
+                user_id, memory_type, scope, project_id, topic
+            )
+
+        if not memory_content:
+            return super().resolve_write_path(
+                user_id, memory_type, scope, project_id, topic
+            )
+
+        llm = self._get_llm()
+        if llm is None:
+            return super().resolve_write_path(
+                user_id, memory_type, scope, project_id, topic
+            )
+
+        try:
+            llm_topic = self._classify_topic(user_id, memory_content)
+            if llm_topic:
+                return self.semantic_memory_path(user_id, llm_topic)
+        except Exception:
+            pass
+
+        return super().resolve_write_path(
+            user_id, memory_type, scope, project_id, topic
+        )
+
+    def _classify_topic(self, user_id: str, memory_content: str) -> str | None:
+        """Ask the LLM to classify a memory into a topic file."""
+        sem_dir = self.root / "users" / user_id / "semantic"
+        existing_files = []
+        if sem_dir.exists():
+            existing_files = [f.stem for f in sem_dir.glob("*.md")]
+
+        existing_str = ", ".join(existing_files) if existing_files else "(none yet)"
+
+        prompt = (
+            "You are a memory filing assistant for a learner's portable memory system.\n"
+            "Given a memory and the existing file topics, respond with ONLY the topic name "
+            "(a short snake_case string, e.g., 'math_algebra', 'study_habits', 'reading_comprehension').\n"
+            "If an existing topic fits, reuse it. Otherwise, suggest a new one.\n\n"
+            f"Existing topics: {existing_str}\n\n"
+            f"Memory content:\n{memory_content[:500]}\n\n"
+            "Topic:"
+        )
+
+        response = self._llm.invoke(prompt)
+        raw = response.content.strip().lower()
+        topic = raw.split("\n")[0].strip().replace(" ", "_").replace("/", "_")
+        topic = "".join(c for c in topic if c.isalnum() or c == "_")
+        return topic if topic else None
+
+
+def get_router(backend: str = "auto", root: Path | None = None) -> MemoryRouter:
+    """Get the best available memory router."""
+    if backend in ("mock", "basic"):
+        return MemoryRouter(root)
+    if backend in ("ollama", "llm"):
+        return LLMMemoryRouter(root)
+    if backend == "auto":
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["ollama", "list"], capture_output=True, timeout=3
+            )
+            if result.returncode == 0:
+                return LLMMemoryRouter(root)
+        except Exception:
+            pass
+    return MemoryRouter(root)
+
+
+memory_router = get_router(os.environ.get("ROUTER_BACKEND", "basic"))

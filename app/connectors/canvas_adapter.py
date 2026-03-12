@@ -47,21 +47,19 @@ class CanvasAdapter:
             sensitivity = "sensitive"
 
         # Build payload with relevant Canvas fields
+        body = raw_event.get("body", {})
         payload = {
             "canvas_event_type": canvas_type,
             "course_id": raw_event.get("course_id"),
-            "assignment_id": raw_event.get("body", {}).get("assignment_id"),
+            "assignment_id": body.get("assignment_id") or raw_event.get("assignment_id"),
         }
-        if "body" in raw_event:
-            body = raw_event["body"]
-            if "score" in body:
-                payload["score"] = body["score"]
-            if "grade" in body:
-                payload["grade"] = body["grade"]
-            if "submission_type" in body:
-                payload["submission_type"] = body["submission_type"]
-            if "body" in body:
-                payload["content_preview"] = body["body"][:500]
+        # Extract score/grade from body or top-level
+        for key in ("score", "grade", "submission_type", "assignment"):
+            val = body.get(key) or raw_event.get(key)
+            if val is not None:
+                payload[key] = val
+        if "body" in body:
+            payload["content_preview"] = body["body"][:500]
 
         return NormalizedInteraction(
             source_system=CanvasAdapter.SOURCE,

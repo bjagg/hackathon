@@ -485,3 +485,72 @@ def ui_endpoint():
     """Serve the entitlements management UI."""
     ui_path = Path(__file__).parent.parent / "ui" / "entitlements.html"
     return FileResponse(ui_path, media_type="text/html")
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Day 3 — Chat with two-LLM governed architecture
+# ═══════════════════════════════════════════════════════════════════════
+
+from app.chat_orchestrator import chat_orchestrator, ChatRequest
+
+
+class ChatRequestBody(BaseModel):
+    message: str
+    user_id: str
+    session_id: str | None = None
+    max_sensitivity: str = "normal"
+
+
+@app.post("/chat")
+def chat_endpoint(req: ChatRequestBody):
+    """Two-LLM chat: local Ollama governs context, cloud LLM generates response."""
+    result = chat_orchestrator.chat(ChatRequest(
+        message=req.message,
+        user_id=req.user_id,
+        session_id=req.session_id,
+        max_sensitivity=req.max_sensitivity,
+    ))
+    return result.model_dump(mode="json")
+
+
+@app.post("/chat/stream")
+async def chat_stream_endpoint(req: ChatRequestBody):
+    """Streaming chat with SSE — tokens arrive as they're generated."""
+    import json as _json
+    from fastapi.responses import StreamingResponse
+
+    def event_generator():
+        for chunk in chat_orchestrator.chat_stream(ChatRequest(
+            message=req.message,
+            user_id=req.user_id,
+            session_id=req.session_id,
+            max_sensitivity=req.max_sensitivity,
+        )):
+            yield f"data: {_json.dumps(chunk, default=str)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get("/chat/sessions/{session_id}")
+def get_chat_session_endpoint(session_id: str):
+    """Get chat session history."""
+    session = chat_orchestrator.get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return session.model_dump(mode="json")
+
+
+@app.delete("/chat/sessions/{session_id}")
+def end_chat_session_endpoint(session_id: str):
+    """End a chat session."""
+    if not chat_orchestrator.end_session(session_id):
+        raise HTTPException(status_code=404, detail="Session not found")
+    return {"status": "ended", "session_id": session_id}
+
+
+@app.get("/chat/ui")
+def chat_ui_endpoint():
+    """Serve the chat UI."""
+    ui_path = Path(__file__).parent.parent / "ui" / "chat.html"
+    return FileResponse(ui_path, media_type="text/html")
