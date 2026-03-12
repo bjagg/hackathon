@@ -105,60 +105,78 @@
         .full-width { grid-column: 1 / -1; }
         .actions { display: flex; gap: 8px; }
 
-        /* --- Path picker styles --- */
+        /* --- Path picker tree styles --- */
         .path-picker {
             border: 1px solid #30363d;
             border-radius: 6px;
             background: #0d1117;
-            max-height: 240px;
+            max-height: 300px;
             overflow-y: auto;
             margin-top: 4px;
+            padding: 4px 0;
         }
-        .path-picker .path-group-label {
-            padding: 6px 12px;
-            font-size: 11px;
-            font-weight: 600;
-            color: #58a6ff;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            background: #161b22;
-            border-bottom: 1px solid #21262d;
-            position: sticky;
-            top: 0;
-            z-index: 1;
+        .tree-node {
+            user-select: none;
         }
-        .path-picker label.path-item {
+        .tree-row {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 5px 12px;
-            margin: 0;
+            gap: 4px;
+            padding: 3px 8px;
             cursor: pointer;
             font-size: 13px;
             font-family: 'SF Mono', Menlo, monospace;
             color: #c9d1d9;
-            border-bottom: 1px solid #21262d10;
         }
-        .path-picker label.path-item:hover {
+        .tree-row:hover {
             background: #1f2937;
         }
-        .path-picker label.path-item input[type="checkbox"] {
+        .tree-toggle {
+            width: 18px;
+            height: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-size: 10px;
+            color: #8b949e;
+            transition: transform 0.15s;
+            border-radius: 3px;
+        }
+        .tree-toggle:hover {
+            background: #30363d;
+            color: #e1e4e8;
+        }
+        .tree-toggle.expanded {
+            transform: rotate(90deg);
+        }
+        .tree-toggle.leaf {
+            visibility: hidden;
+        }
+        .tree-row input[type="checkbox"] {
             accent-color: #58a6ff;
             width: 14px;
             height: 14px;
             flex-shrink: 0;
+            margin: 0;
         }
-        .path-picker .path-icon {
+        .tree-icon {
             flex-shrink: 0;
             font-size: 14px;
             width: 18px;
             text-align: center;
         }
-        .path-picker .path-text {
+        .tree-label {
             flex: 1;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+        }
+        .tree-children {
+            overflow: hidden;
+        }
+        .tree-children.collapsed {
+            display: none;
         }
         .path-search {
             width: 100%;
@@ -374,47 +392,150 @@
             }
         }
 
-        // ─── Path picker ────────────────────────────────────────
+        // ─── Path picker (collapsible tree) ──────────────────────
+
+        // Track which tree nodes are collapsed
+        let collapsedNodes = new Set();
 
         async function loadPaths() {
             allPaths = await apiFetch('/manage/memory-paths');
             renderPathPicker();
         }
 
+        /**
+         * Build a tree structure from the flat path list.
+         * Each node: { name, fullPath, apiPath, type, children: {} }
+         */
+        function buildTree(paths) {
+            const root = { name: 'memory', children: {}, type: 'directory', apiPath: null, fullPath: 'memory' };
+            for (const p of paths) {
+                // p.label is relative to memory root, p.path includes "memory/" prefix
+                const isDir = p.type === 'directory';
+                const label = p.label.replace(/\/$/, '');
+                const parts = label.split('/');
+                let node = root;
+                let accumulated = 'memory';
+                for (let i = 0; i < parts.length; i++) {
+                    accumulated += '/' + parts[i];
+                    const part = parts[i];
+                    if (!node.children[part]) {
+                        node.children[part] = {
+                            name: part,
+                            fullPath: accumulated,
+                            apiPath: null,
+                            type: (i < parts.length - 1) ? 'directory' : p.type,
+                            children: {},
+                        };
+                    }
+                    if (i === parts.length - 1) {
+                        // Set the API path for this exact entry
+                        node.children[part].apiPath = p.path;
+                        node.children[part].type = p.type;
+                    }
+                    node = node.children[part];
+                }
+            }
+            return root;
+        }
+
         function renderPathPicker(filter = '') {
             const picker = document.getElementById('pathPicker');
             const lowerFilter = filter.toLowerCase();
 
-            // Group by top-level directory
-            const groups = {};
-            for (const p of allPaths) {
-                if (lowerFilter && !p.path.toLowerCase().includes(lowerFilter) && !p.label.toLowerCase().includes(lowerFilter)) continue;
-                const parts = p.label.split('/');
-                const group = parts.length > 1 ? parts[0] : 'root';
-                if (!groups[group]) groups[group] = [];
-                groups[group].push(p);
+            // Filter paths if search is active
+            let filteredPaths = allPaths;
+            if (lowerFilter) {
+                filteredPaths = allPaths.filter(p =>
+                    p.path.toLowerCase().includes(lowerFilter) ||
+                    p.label.toLowerCase().includes(lowerFilter)
+                );
+                // When filtering, expand all nodes
+                collapsedNodes = new Set();
             }
 
-            if (Object.keys(groups).length === 0) {
+            if (filteredPaths.length === 0) {
                 picker.innerHTML = '<div style="padding:12px;color:#8b949e;text-align:center;">No matching paths</div>';
                 return;
             }
 
-            let html = '';
-            for (const [group, items] of Object.entries(groups).sort()) {
-                html += `<div class="path-group-label">${group}</div>`;
-                for (const item of items) {
-                    const checked = selectedMemoryPaths.has(item.path) ? 'checked' : '';
-                    const icon = item.type === 'directory' ? '&#128193;' : '&#128196;';
-                    html += `
-                        <label class="path-item">
-                            <input type="checkbox" value="${item.path}" ${checked} onchange="togglePath(this)">
-                            <span class="path-icon">${icon}</span>
-                            <span class="path-text">${item.label}</span>
-                        </label>`;
-                }
+            const tree = buildTree(filteredPaths);
+            // Render children of root directly (skip the "memory" root node itself)
+            const children = Object.values(tree.children);
+            if (children.length === 0) {
+                picker.innerHTML = '<div style="padding:12px;color:#8b949e;text-align:center;">No matching paths</div>';
+                return;
             }
-            picker.innerHTML = html;
+            picker.innerHTML = renderTreeNodes(children, 0);
+        }
+
+        function renderTreeNodes(nodes, depth) {
+            let html = '';
+            // Sort: directories first, then files, alphabetical within each
+            const sorted = nodes.sort((a, b) => {
+                const aDir = Object.keys(a.children).length > 0 || a.type === 'directory' ? 0 : 1;
+                const bDir = Object.keys(b.children).length > 0 || b.type === 'directory' ? 0 : 1;
+                if (aDir !== bDir) return aDir - bDir;
+                return a.name.localeCompare(b.name);
+            });
+
+            for (const node of sorted) {
+                const hasChildren = Object.keys(node.children).length > 0;
+                const isDir = hasChildren || node.type === 'directory';
+                const isCollapsed = collapsedNodes.has(node.fullPath);
+                const indent = depth * 20;
+                const icon = isDir ? '&#128193;' : '&#128196;';
+                const toggleClass = hasChildren ? (isCollapsed ? '' : 'expanded') : 'leaf';
+                const selectable = node.apiPath !== null;
+                const checked = selectable && selectedMemoryPaths.has(node.apiPath) ? 'checked' : '';
+
+                html += `<div class="tree-node">`;
+                html += `<div class="tree-row" style="padding-left:${8 + indent}px;" onclick="treeRowClick(event, '${node.fullPath}')">`;
+                html += `<span class="tree-toggle ${toggleClass}" data-path="${node.fullPath}">&#9654;</span>`;
+                if (selectable) {
+                    html += `<input type="checkbox" value="${node.apiPath}" ${checked} onclick="event.stopPropagation()" onchange="togglePath(this)">`;
+                } else {
+                    html += `<span style="width:14px;flex-shrink:0;"></span>`;
+                }
+                html += `<span class="tree-icon">${icon}</span>`;
+                html += `<span class="tree-label">${node.name}${isDir ? '/' : ''}</span>`;
+                html += `</div>`;
+
+                if (hasChildren) {
+                    html += `<div class="tree-children ${isCollapsed ? 'collapsed' : ''}">`;
+                    html += renderTreeNodes(Object.values(node.children), depth + 1);
+                    html += `</div>`;
+                }
+                html += `</div>`;
+            }
+            return html;
+        }
+
+        function treeRowClick(event, fullPath) {
+            // Don't toggle when clicking on checkbox
+            if (event.target.tagName === 'INPUT') return;
+            toggleCollapse(fullPath);
+        }
+
+        function toggleCollapse(fullPath) {
+            // Find the toggle and children container for this node
+            const picker = document.getElementById('pathPicker');
+            const toggles = picker.querySelectorAll(`.tree-toggle[data-path="${fullPath}"]`);
+            if (!toggles.length) return;
+            const toggle = toggles[0];
+            if (toggle.classList.contains('leaf')) return;
+
+            const childContainer = toggle.closest('.tree-node').querySelector('.tree-children');
+            if (!childContainer) return;
+
+            if (collapsedNodes.has(fullPath)) {
+                collapsedNodes.delete(fullPath);
+                toggle.classList.add('expanded');
+                childContainer.classList.remove('collapsed');
+            } else {
+                collapsedNodes.add(fullPath);
+                toggle.classList.remove('expanded');
+                childContainer.classList.add('collapsed');
+            }
         }
 
         function filterPaths() {
