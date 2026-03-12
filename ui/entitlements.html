@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory Entitlements Manager</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0f1117;
+            color: #e1e4e8;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            color: #58a6ff;
+        }
+        .subtitle {
+            color: #8b949e;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .card h2 {
+            font-size: 16px;
+            color: #58a6ff;
+            margin-bottom: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #21262d;
+        }
+        label {
+            display: block;
+            font-size: 13px;
+            color: #8b949e;
+            margin-bottom: 4px;
+            margin-top: 12px;
+        }
+        label:first-of-type { margin-top: 0; }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px 12px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #e1e4e8;
+            font-size: 14px;
+        }
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #58a6ff;
+        }
+        textarea { resize: vertical; min-height: 60px; }
+        button {
+            padding: 8px 16px;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 16px;
+            transition: all 0.15s;
+        }
+        .btn-primary {
+            background: #238636;
+            color: white;
+            border-color: #238636;
+        }
+        .btn-primary:hover { background: #2ea043; }
+        .btn-danger {
+            background: transparent;
+            color: #f85149;
+            border-color: #f85149;
+        }
+        .btn-danger:hover { background: #f8514920; }
+        .btn-secondary {
+            background: #21262d;
+            color: #c9d1d9;
+        }
+        .btn-secondary:hover { background: #30363d; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            text-align: left;
+            padding: 8px;
+            border-bottom: 1px solid #30363d;
+            color: #8b949e;
+            font-weight: 500;
+        }
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #21262d;
+        }
+        tr:hover { background: #161b2240; }
+        .scope-badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .scope-private { background: #30363d; color: #8b949e; }
+        .scope-project { background: #0d419d40; color: #58a6ff; }
+        .scope-team { background: #23863640; color: #3fb950; }
+        .scope-global { background: #9e6a0340; color: #d29922; }
+        .sensitivity-normal { color: #8b949e; }
+        .sensitivity-sensitive { color: #d29922; }
+        .sensitivity-restricted { color: #f85149; }
+        .status-bar {
+            display: flex;
+            gap: 16px;
+            padding: 12px 20px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+        .status-item { color: #8b949e; }
+        .status-item strong { color: #58a6ff; }
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            z-index: 100;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .toast.show { opacity: 1; }
+        .toast-success { background: #238636; color: white; }
+        .toast-error { background: #da3633; color: white; }
+        .full-width { grid-column: 1 / -1; }
+        .actions { display: flex; gap: 8px; }
+    </style>
+</head>
+<body>
+    <h1>Memory Entitlements Manager</h1>
+    <p class="subtitle">Manage access controls for the Portable Learner Memory Platform</p>
+
+    <div class="status-bar" id="statusBar">
+        <span class="status-item">Status: <strong id="sysStatus">Loading...</strong></span>
+        <span class="status-item">Entitlements: <strong id="entCount">-</strong></span>
+        <span class="status-item">Indexed chunks: <strong id="chunkCount">-</strong></span>
+        <span class="status-item">Files indexed: <strong id="fileCount">-</strong></span>
+    </div>
+
+    <div class="grid">
+        <!-- Create entitlement -->
+        <div class="card">
+            <h2>Create Entitlement</h2>
+            <label>Memory Path</label>
+            <input id="createPath" placeholder="memory/users/maya/semantic/general.md">
+
+            <label>Owner</label>
+            <input id="createOwner" placeholder="student_maya">
+
+            <label>Scope</label>
+            <select id="createScope">
+                <option value="private">Private</option>
+                <option value="project">Project</option>
+                <option value="team">Team</option>
+                <option value="global">Global</option>
+            </select>
+
+            <label>Sensitivity</label>
+            <select id="createSensitivity">
+                <option value="normal">Normal</option>
+                <option value="sensitive">Sensitive</option>
+                <option value="restricted">Restricted</option>
+            </select>
+
+            <label>Allowed Readers (comma-separated)</label>
+            <input id="createReaders" placeholder="tutor_sarah, parent_maria">
+
+            <label>Purpose Tags (comma-separated)</label>
+            <input id="createPurpose" placeholder="tutoring, progress_review">
+
+            <button class="btn-primary" onclick="createEntitlement()">Create Entitlement</button>
+        </div>
+
+        <!-- Grant / Revoke -->
+        <div class="card">
+            <h2>Grant or Revoke Access</h2>
+
+            <label>Entitlement ID</label>
+            <input id="grantEntId" placeholder="ent_abc12345">
+
+            <label>Reader ID</label>
+            <input id="grantReaderId" placeholder="tutor_sarah">
+
+            <label>Purpose</label>
+            <input id="grantPurpose" placeholder="tutoring_session">
+
+            <div class="actions">
+                <button class="btn-primary" onclick="grantAccess()">Grant Access</button>
+                <button class="btn-danger" onclick="revokeAccess()">Revoke Access</button>
+            </div>
+
+            <hr style="border-color: #21262d; margin: 20px 0;">
+
+            <h2>Quick Check</h2>
+            <label>Memory Path</label>
+            <input id="checkPath" placeholder="memory/users/maya/semantic/general.md">
+            <label>Reader ID</label>
+            <input id="checkReader" placeholder="tutor_sarah">
+            <button class="btn-secondary" onclick="checkAccess()">Check Access</button>
+            <p id="checkResult" style="margin-top: 8px; font-size: 13px;"></p>
+        </div>
+
+        <!-- Entitlements list -->
+        <div class="card full-width">
+            <h2>Current Entitlements</h2>
+            <button class="btn-secondary" onclick="loadEntitlements()" style="margin-bottom: 12px; margin-top: 0;">Refresh</button>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Memory Path</th>
+                        <th>Owner</th>
+                        <th>Scope</th>
+                        <th>Sensitivity</th>
+                        <th>Readers</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="entTableBody">
+                    <tr><td colspan="7" style="text-align:center; color:#8b949e;">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const API = '';  // Same origin
+
+        async function apiFetch(path, options = {}) {
+            const resp = await fetch(API + path, {
+                headers: { 'Content-Type': 'application/json' },
+                ...options,
+            });
+            return resp.json();
+        }
+
+        function showToast(msg, type = 'success') {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.className = `toast toast-${type} show`;
+            setTimeout(() => t.classList.remove('show'), 3000);
+        }
+
+        function splitCsv(val) {
+            return val.split(',').map(s => s.trim()).filter(Boolean);
+        }
+
+        // --- Status ---
+        async function loadStatus() {
+            try {
+                const data = await apiFetch('/pipeline/status');
+                document.getElementById('sysStatus').textContent = data.status || 'operational';
+                document.getElementById('entCount').textContent = data.entitlement_count || 0;
+                document.getElementById('chunkCount').textContent = data.index_stats?.total_chunks || 0;
+                document.getElementById('fileCount').textContent = data.index_stats?.files_indexed || 0;
+            } catch {
+                document.getElementById('sysStatus').textContent = 'error';
+            }
+        }
+
+        // --- Entitlements CRUD ---
+        async function loadEntitlements() {
+            const data = await apiFetch('/manage/entitlements');
+            const tbody = document.getElementById('entTableBody');
+            if (!data.length) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8b949e;">No entitlements found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.map(e => `
+                <tr>
+                    <td style="font-family:monospace;font-size:12px;">${e.entitlement_id}</td>
+                    <td style="font-family:monospace;font-size:12px;">${e.memory_path}</td>
+                    <td>${e.owner}</td>
+                    <td><span class="scope-badge scope-${e.scope}">${e.scope}</span></td>
+                    <td><span class="sensitivity-${e.sensitivity}">${e.sensitivity}</span></td>
+                    <td>${(e.allowed_readers || []).join(', ') || '—'}</td>
+                    <td><button class="btn-danger" style="margin:0;padding:4px 8px;font-size:12px;" onclick="deleteEntitlement('${e.entitlement_id}')">Delete</button></td>
+                </tr>
+            `).join('');
+        }
+
+        async function createEntitlement() {
+            const payload = {
+                memory_path: document.getElementById('createPath').value,
+                owner: document.getElementById('createOwner').value,
+                scope: document.getElementById('createScope').value,
+                sensitivity: document.getElementById('createSensitivity').value,
+                allowed_readers: splitCsv(document.getElementById('createReaders').value),
+                purpose_tags: splitCsv(document.getElementById('createPurpose').value),
+            };
+            if (!payload.memory_path || !payload.owner) {
+                showToast('Path and owner are required', 'error');
+                return;
+            }
+            await apiFetch('/manage/entitlements', { method: 'POST', body: JSON.stringify(payload) });
+            showToast('Entitlement created');
+            loadEntitlements();
+            loadStatus();
+        }
+
+        async function deleteEntitlement(id) {
+            await apiFetch(`/manage/entitlements/${id}`, { method: 'DELETE' });
+            showToast('Entitlement deleted');
+            loadEntitlements();
+            loadStatus();
+        }
+
+        async function grantAccess() {
+            const id = document.getElementById('grantEntId').value;
+            const reader = document.getElementById('grantReaderId').value;
+            const purpose = document.getElementById('grantPurpose').value;
+            if (!id || !reader) { showToast('ID and reader required', 'error'); return; }
+            await apiFetch(`/manage/entitlements/${id}/grant`, {
+                method: 'POST',
+                body: JSON.stringify({ reader_id: reader, purpose }),
+            });
+            showToast(`Access granted to ${reader}`);
+            loadEntitlements();
+        }
+
+        async function revokeAccess() {
+            const id = document.getElementById('grantEntId').value;
+            const reader = document.getElementById('grantReaderId').value;
+            if (!id || !reader) { showToast('ID and reader required', 'error'); return; }
+            await apiFetch(`/manage/entitlements/${id}/revoke`, {
+                method: 'POST',
+                body: JSON.stringify({ reader_id: reader }),
+            });
+            showToast(`Access revoked for ${reader}`);
+            loadEntitlements();
+        }
+
+        async function checkAccess() {
+            const path = document.getElementById('checkPath').value;
+            const reader = document.getElementById('checkReader').value;
+            if (!path || !reader) return;
+            const data = await apiFetch(`/manage/check-access?memory_path=${encodeURIComponent(path)}&reader_id=${encodeURIComponent(reader)}`);
+            const el = document.getElementById('checkResult');
+            if (data.has_access) {
+                el.innerHTML = `<span style="color:#3fb950;">&#10003; ${reader} has access</span>`;
+            } else {
+                el.innerHTML = `<span style="color:#f85149;">&#10007; ${reader} does NOT have access</span>`;
+            }
+        }
+
+        // Init
+        loadStatus();
+        loadEntitlements();
+    </script>
+</body>
+</html>

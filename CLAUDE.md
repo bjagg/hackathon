@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Portable Learner Memory Platform — an education-first, user-governed portable memory API. Learners carry context across learning tools via six semantic Markdown documents with entitlement-based access control.
+Portable Learner Memory Platform — an education-first, user-governed portable memory API. Learners carry context across learning tools via six semantic Markdown documents with entitlement-based access control, interaction ingestion, LLM-governed memory admission, and vector retrieval.
 
 ## Commands
 
@@ -23,32 +23,55 @@ pytest tests/test_api.py::test_name -v
 
 # Run demo client (server must be running)
 python client_demo.py
+
+# Entitlements UI (server must be running)
+# Open http://localhost:8000/ui
 ```
 
 ## Architecture
 
-**Storage model**: Markdown files with YAML front matter (python-frontmatter). Filesystem is source of truth. Each subject gets a directory under `memory/subjects/{subject}/` containing 6 document files + INDEX.md.
+### Storage model
+Markdown files with YAML front matter (python-frontmatter). Filesystem is source of truth. Two storage layouts:
+- `memory/subjects/{subject}/` — 6 semantic documents + INDEX.md (Day 1 section-based store)
+- `memory/users/{user_id}/daily/` and `memory/users/{user_id}/semantic/` — interaction logs + compacted memories (Day 2 pipeline)
 
-**Six semantic documents**: AGENTS.md (policies/constraints), SOUL.md (learning identity/values), IDENTITY.md (current role/school/grade), USER.md (preferences/accessibility), TOOLS.md (integrations/configs), MEMORY.md (mastery/errors/inferences/events).
+SQLite vector DB (`memory/vectors.db`) is a derived index for semantic search, rebuildable from Markdown.
 
-**INDEX.md**: Derived, rebuildable domain tree index. Auto-rebuilt on every CRUD mutation via `store._rebuild_index()`. Contains YAML front matter (machine-readable tree) + rendered markdown (ASCII tree, rollup tables, mastery bars). Never edit directly.
+### Six semantic documents
+AGENTS.md (policies/constraints), SOUL.md (learning identity/values), IDENTITY.md (current role/school/grade), USER.md (preferences/accessibility), TOOLS.md (integrations/configs), MEMORY.md (mastery/errors/inferences/events).
 
-**Key modules**:
+### Key modules — Day 1 (Section store)
 - `app/models.py` — Pydantic v2 models. `Section` is the atomic unit with `domain_path` for tree placement.
 - `app/store.py` — CRUD over Markdown files. Calls `_rebuild_index()` after every write.
-- `app/tree.py` — Builds hierarchical `TreeNode` from sections, computes rollup stats, renders/persists INDEX.md.
-- `app/entitlements.py` — 9 named access profiles with document + kind scoping (least privilege).
-- `app/policy.py` — `Grant` binds entitlement + requester + subject + duration. `PolicyEngine` resolves access.
-- `app/router.py` — Builds `ContextBundle` filtered by grant, reports redacted documents/kinds.
+- `app/tree.py` — Builds hierarchical `TreeNode` from sections, computes rollup stats, renders INDEX.md.
+- `app/entitlements.py` — 9 named access profiles with document + kind scoping.
+- `app/policy.py` — `Grant` binds entitlement + requester + subject + duration.
+- `app/router.py` — Builds `ContextBundle` filtered by grant.
 
-**Access control flow**: Requester gets a time-bound `Grant` for a named entitlement → context retrieval filters sections by allowed documents AND allowed kinds → response shows what was included and what was redacted.
+### Key modules — Day 2 (Pipeline)
+- `app/connectors/` — Normalize events from source systems (Canvas LMS, Slack).
+- `app/daily_logger.py` — Append interactions to daily Markdown logs.
+- `app/llm_steward.py` — LLM memory admission with mock + real backends. Ethics prompt in `prompts/`.
+- `app/memory_router.py` — Route reads/writes to correct Markdown files by type/scope.
+- `app/memory_compactor.py` — Compact daily logs into semantic memories.
+- `app/embedding_indexer.py` — SQLite vector DB with hash-based or sentence-transformer embeddings.
+- `app/retriever.py` — Governance-first retrieval (filter before search).
+- `app/entitlement_service.py` — Per-file entitlement CRUD with JSON persistence.
+- `app/sharing.py` — Sharing scopes (private/project/team/global).
+- `app/langchain_pipeline.py` — Orchestrates ingest → log → steward → route → write → index → retrieve.
 
-**Domain tree**: Sections have `domain_path` (e.g., `math/algebra/rational_expressions`). Tree nodes aggregate stats (mastery_avg, confidence_avg, error counts) bottom-up via `_rollup()`.
+### Access control (two layers)
+1. **Entitlements** (Day 1): Named profiles scoping document types + section kinds, bound via time-limited grants.
+2. **Sharing scopes** (Day 2): Per-file access (private/project/team/global) with explicit reader lists, stored in frontmatter.
+
+Retrieval always applies governance filters BEFORE vector similarity search.
 
 ## Conventions
 
-- Python 3.12+, FastAPI, Pydantic v2
-- No database — Markdown files are canonical storage
-- `memory/subjects/` is gitignored (runtime data)
-- Tests use `httpx.AsyncClient` with FastAPI's `TestClient`
-- Section IDs are `sec_{uuid_hex[:8]}`, grants are `grant_{uuid_hex[:8]}`
+- Python 3.12+, FastAPI, Pydantic v2, numpy
+- Markdown files are canonical storage; vector DB is derived
+- `memory/subjects/` and `memory/users/` are gitignored (runtime data)
+- Tests use `fastapi.testclient.TestClient` (synchronous)
+- IDs: `sec_{hex[:8]}`, `grant_{hex[:8]}`, `int_{hex[:12]}`, `ent_{hex[:8]}`
+- LLM steward defaults to mock (rule-based); set `STEWARD_BACKEND=llm` for Ollama
+- Embedder defaults to hash-based; install `sentence-transformers` for real semantics

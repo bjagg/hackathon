@@ -1,6 +1,11 @@
 """FastAPI application for the Portable Learner Memory Platform."""
 
+from datetime import date
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
 
 from app.entitlements import ENTITLEMENTS
 from app.tree import build_tree, query_subtree, list_paths, load_index_markdown
@@ -27,10 +32,21 @@ from app.store import (
     update_section,
 )
 
+# Pipeline imports
+from app.connectors.schema import NormalizedInteraction
+from app.connectors.canvas_adapter import CanvasAdapter
+from app.connectors.slack_adapter import SlackAdapter
+from app.daily_logger import daily_logger
+from app.entitlement_service import entitlement_service, EntitlementUpdate
+from app.langchain_pipeline import memory_pipeline
+
 app = FastAPI(
     title="Portable Learner Memory Platform",
-    version="0.3.0",
-    description="Education-first, user-governed portable memory API with entitlement-based access.",
+    version="0.4.0",
+    description=(
+        "Education-first, user-governed portable memory API with entitlement-based access, "
+        "interaction ingestion, LLM-governed memory admission, and vector retrieval."
+    ),
 )
 
 
@@ -181,7 +197,6 @@ def tree_endpoint(subject: str, depth: int = Query(default=-1)):
 @app.get("/tree/{subject}/markdown")
 def tree_markdown_endpoint(subject: str):
     """Read INDEX.md as rendered markdown."""
-    # Ensure it's up to date
     build_tree(subject)
     md = load_index_markdown(subject)
     if md is None:
@@ -228,3 +243,232 @@ def tree_rebuild_endpoint(subject: str):
 @app.get("/audit", response_model=list[AuditEntry])
 def audit_endpoint(subject: str | None = Query(default=None)):
     return get_audit_log(subject)
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Day 2 — Ingestion, Pipeline, Governance, and UI endpoints
+# ═══════════════════════════════════════════════════════════════════════
+
+
+# --- Interaction ingestion ---
+
+
+@app.post("/ingest")
+def ingest_endpoint(interaction: NormalizedInteraction):
+    """Ingest a single normalized interaction through the full pipeline."""
+    result = memory_pipeline.ingest(interaction)
+    return result.model_dump(mode="json")
+
+
+@app.post("/ingest/batch")
+def ingest_batch_endpoint(interactions: list[NormalizedInteraction]):
+    """Ingest multiple interactions."""
+    results = memory_pipeline.ingest_batch(interactions)
+    return [r.model_dump(mode="json") for r in results]
+
+
+class RawEventIngest(BaseModel):
+    source: str  # "canvas" or "slack"
+    events: list[dict]
+
+
+@app.post("/ingest/raw")
+def ingest_raw_endpoint(payload: RawEventIngest):
+    """Ingest raw events from a source system. Adapter normalizes them."""
+    adapters = {"canvas": CanvasAdapter, "slack": SlackAdapter}
+    adapter_cls = adapters.get(payload.source)
+    if not adapter_cls:
+        raise HTTPException(status_code=400, detail=f"Unknown source: {payload.source}")
+
+    interactions = [adapter_cls.normalize(event) for event in payload.events]
+    results = memory_pipeline.ingest_batch(interactions)
+    return {
+        "source": payload.source,
+        "events_received": len(payload.events),
+        "results": [r.model_dump(mode="json") for r in results],
+    }
+
+
+# --- Daily logs ---
+
+
+@app.get("/daily/{user_id}/{log_date}")
+def read_daily_log_endpoint(user_id: str, log_date: str):
+    """Read a user's daily interaction log."""
+    try:
+        d = date.fromisoformat(log_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format (use YYYY-MM-DD)")
+    entries = daily_logger.read_log(user_id, d)
+    markdown = daily_logger.read_log_markdown(user_id, d)
+    return {"user_id": user_id, "date": log_date, "entries": entries, "markdown": markdown}
+
+
+@app.get("/daily/{user_id}")
+def list_daily_logs_endpoint(user_id: str):
+    """List all daily log dates for a user."""
+    dates = daily_logger.list_log_dates(user_id)
+    return {"user_id": user_id, "dates": [d.isoformat() for d in dates]}
+
+
+# --- Compaction ---
+
+
+@app.post("/compact/{user_id}/{compact_date}")
+def compact_endpoint(user_id: str, compact_date: str):
+    """Trigger compaction of a daily log into semantic memories."""
+    try:
+        d = date.fromisoformat(compact_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid date format")
+    result = memory_pipeline.compact(user_id, d)
+    return result.model_dump(mode="json")
+
+
+@app.post("/compact/{user_id}")
+def compact_recent_endpoint(user_id: str, days: int = Query(default=7)):
+    """Compact all recent uncompacted daily logs."""
+    from app.memory_compactor import memory_compactor
+    results = memory_compactor.compact_recent(user_id, days)
+    return [r.model_dump(mode="json") for r in results]
+
+
+# --- Governed retrieval ---
+
+
+@app.post("/query")
+def query_endpoint(
+    query: str,
+    user_id: str,
+    reader_id: str | None = Query(default=None),
+    max_sensitivity: str = Query(default="normal"),
+    top_k: int = Query(default=5),
+):
+    """Governed memory retrieval with entitlement filtering."""
+    result = memory_pipeline.query(
+        question=query,
+        user_id=user_id,
+        reader_id=reader_id,
+        max_sensitivity=max_sensitivity,
+        top_k=top_k,
+    )
+    return result.model_dump(mode="json")
+
+
+# --- Pipeline status ---
+
+
+@app.get("/pipeline/status")
+def pipeline_status_endpoint():
+    """Get pipeline health and statistics."""
+    return memory_pipeline.get_status()
+
+
+@app.post("/pipeline/reindex")
+def reindex_endpoint():
+    """Reindex all memory files."""
+    total = memory_pipeline.reindex_all()
+    return {"status": "reindexed", "chunks_indexed": total}
+
+
+# --- Entitlement management (for UI) ---
+
+
+class EntitlementCreateRequest(BaseModel):
+    memory_path: str
+    owner: str
+    scope: str = "private"
+    sensitivity: str = "normal"
+    allowed_readers: list[str] = []
+    purpose_tags: list[str] = []
+
+
+class GrantReaderRequest(BaseModel):
+    reader_id: str
+    purpose: str = ""
+
+
+class RevokeReaderRequest(BaseModel):
+    reader_id: str
+
+
+@app.get("/manage/entitlements")
+def list_managed_entitlements(owner: str | None = Query(default=None)):
+    """List all managed entitlements."""
+    if owner:
+        items = entitlement_service.list_for_owner(owner)
+    else:
+        items = entitlement_service.list_all()
+    return [e.model_dump(mode="json") for e in items]
+
+
+@app.post("/manage/entitlements")
+def create_managed_entitlement(req: EntitlementCreateRequest):
+    ent = entitlement_service.create(
+        memory_path=req.memory_path,
+        owner=req.owner,
+        scope=req.scope,
+        sensitivity=req.sensitivity,
+        allowed_readers=req.allowed_readers,
+        purpose_tags=req.purpose_tags,
+    )
+    return ent.model_dump(mode="json")
+
+
+@app.get("/manage/entitlements/{entitlement_id}")
+def get_managed_entitlement(entitlement_id: str):
+    ent = entitlement_service.get(entitlement_id)
+    if not ent:
+        raise HTTPException(status_code=404, detail="Entitlement not found")
+    return ent.model_dump(mode="json")
+
+
+@app.put("/manage/entitlements/{entitlement_id}")
+def update_managed_entitlement(entitlement_id: str, updates: EntitlementUpdate):
+    ent = entitlement_service.update(entitlement_id, updates)
+    if not ent:
+        raise HTTPException(status_code=404, detail="Entitlement not found")
+    return ent.model_dump(mode="json")
+
+
+@app.delete("/manage/entitlements/{entitlement_id}")
+def delete_managed_entitlement(entitlement_id: str):
+    ok = entitlement_service.delete(entitlement_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Entitlement not found")
+    return {"status": "deleted", "entitlement_id": entitlement_id}
+
+
+@app.post("/manage/entitlements/{entitlement_id}/grant")
+def grant_reader_endpoint(entitlement_id: str, req: GrantReaderRequest):
+    ok = entitlement_service.grant_reader(entitlement_id, req.reader_id, req.purpose)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Entitlement not found or reader already granted")
+    return {"status": "granted", "reader_id": req.reader_id}
+
+
+@app.post("/manage/entitlements/{entitlement_id}/revoke")
+def revoke_reader_endpoint(entitlement_id: str, req: RevokeReaderRequest):
+    ok = entitlement_service.revoke_reader(entitlement_id, req.reader_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Entitlement not found or reader not found")
+    return {"status": "revoked", "reader_id": req.reader_id}
+
+
+@app.get("/manage/check-access")
+def check_access_endpoint(
+    memory_path: str = Query(...),
+    reader_id: str = Query(...),
+):
+    has_access = entitlement_service.check_access(memory_path, reader_id)
+    return {"memory_path": memory_path, "reader_id": reader_id, "has_access": has_access}
+
+
+# --- UI ---
+
+
+@app.get("/ui")
+def ui_endpoint():
+    """Serve the entitlements management UI."""
+    ui_path = Path(__file__).parent.parent / "ui" / "entitlements.html"
+    return FileResponse(ui_path, media_type="text/html")

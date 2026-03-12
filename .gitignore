@@ -2,5 +2,12 @@ __pycache__/
 *.pyc
 .pytest_cache/
 memory/subjects/
+memory/users/
+memory/projects/
+memory/shared/
+memory/policies/
+memory/vectors.db
+memory/entitlements_index.json
+memory_test_*/
 *.egg-info/
 .env
