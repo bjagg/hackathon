@@ -375,7 +375,9 @@ def reindex_endpoint():
 
 
 class EntitlementCreateRequest(BaseModel):
-    memory_path: str
+    name: str = ""
+    memory_paths: list[str] = []
+    memory_path: str = ""          # legacy single-path
     owner: str
     scope: str = "private"
     sensitivity: str = "normal"
@@ -405,6 +407,8 @@ def list_managed_entitlements(owner: str | None = Query(default=None)):
 @app.post("/manage/entitlements")
 def create_managed_entitlement(req: EntitlementCreateRequest):
     ent = entitlement_service.create(
+        name=req.name,
+        memory_paths=req.memory_paths,
         memory_path=req.memory_path,
         owner=req.owner,
         scope=req.scope,
@@ -462,6 +466,15 @@ def check_access_endpoint(
 ):
     has_access = entitlement_service.check_access(memory_path, reader_id)
     return {"memory_path": memory_path, "reader_id": reader_id, "has_access": has_access}
+
+
+# --- Memory path discovery ---
+
+
+@app.get("/manage/memory-paths")
+def list_memory_paths_endpoint():
+    """Scan the memory directory and return available files and directories."""
+    return entitlement_service.scan_memory_paths()
 
 
 # --- UI ---

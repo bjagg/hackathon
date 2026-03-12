@@ -72,19 +72,23 @@ class TestEntitlementService:
     def test_create_and_get(self):
         svc = EntitlementService(root=TEST_ROOT)
         ent = svc.create(
-            memory_path="memory/users/maya/semantic/general.md",
+            name="Transcript — Term Grades",
+            memory_paths=["memory/subjects/maya/MEMORY.md", "memory/subjects/maya/IDENTITY.md"],
             owner="maya",
             scope="private",
         )
         assert ent.entitlement_id.startswith("ent_")
+        assert ent.name == "Transcript — Term Grades"
         retrieved = svc.get(ent.entitlement_id)
         assert retrieved is not None
         assert retrieved.owner == "maya"
+        assert len(retrieved.memory_paths) == 2
 
     def test_grant_and_revoke_reader(self):
         svc = EntitlementService(root=TEST_ROOT)
         ent = svc.create(
-            memory_path="memory/users/maya/semantic/general.md",
+            name="Tutoring Access",
+            memory_paths=["memory/users/maya/semantic/general.md"],
             owner="maya",
         )
         # Grant
@@ -97,10 +101,11 @@ class TestEntitlementService:
         ent = svc.get(ent.entitlement_id)
         assert "tutor_sarah" not in ent.allowed_readers
 
-    def test_check_access(self):
+    def test_check_access_single_file(self):
         svc = EntitlementService(root=TEST_ROOT)
         svc.create(
-            memory_path="memory/users/maya/semantic/general.md",
+            name="Reading Access",
+            memory_paths=["memory/users/maya/semantic/general.md"],
             owner="maya",
             allowed_readers=["tutor_sarah"],
         )
@@ -108,18 +113,74 @@ class TestEntitlementService:
         assert svc.check_access("memory/users/maya/semantic/general.md", "tutor_sarah") is True
         assert svc.check_access("memory/users/maya/semantic/general.md", "random") is False
 
+    def test_check_access_directory(self):
+        """Directory entitlement covers all files inside it."""
+        svc = EntitlementService(root=TEST_ROOT)
+        svc.create(
+            name="All Semantic Memory",
+            memory_paths=["memory/users/maya/semantic/"],
+            owner="maya",
+            allowed_readers=["tutor_sarah"],
+        )
+        # Files inside the directory should be covered
+        assert svc.check_access("memory/users/maya/semantic/general.md", "tutor_sarah") is True
+        assert svc.check_access("memory/users/maya/semantic/math.md", "tutor_sarah") is True
+        # Files outside should not
+        assert svc.check_access("memory/users/maya/daily/2026-03-12.md", "tutor_sarah") is False
+
+    def test_check_access_directory_without_trailing_slash(self):
+        """Directory match works even without trailing slash."""
+        svc = EntitlementService(root=TEST_ROOT)
+        svc.create(
+            name="Daily Logs",
+            memory_paths=["memory/users/maya/daily"],
+            owner="maya",
+            allowed_readers=["parent_maria"],
+        )
+        assert svc.check_access("memory/users/maya/daily/2026-03-12.md", "parent_maria") is True
+
+    def test_multi_path_entitlement(self):
+        """Entitlement with multiple paths covers all of them."""
+        svc = EntitlementService(root=TEST_ROOT)
+        svc.create(
+            name="Transfer Bundle",
+            memory_paths=[
+                "memory/subjects/maya/IDENTITY.md",
+                "memory/subjects/maya/MEMORY.md",
+                "memory/users/maya/semantic/",
+            ],
+            owner="maya",
+            allowed_readers=["new_school_admin"],
+        )
+        assert svc.check_access("memory/subjects/maya/IDENTITY.md", "new_school_admin") is True
+        assert svc.check_access("memory/subjects/maya/MEMORY.md", "new_school_admin") is True
+        assert svc.check_access("memory/users/maya/semantic/math.md", "new_school_admin") is True
+        # Not included
+        assert svc.check_access("memory/subjects/maya/SOUL.md", "new_school_admin") is False
+
+    def test_legacy_single_path(self):
+        """Legacy memory_path field still works."""
+        svc = EntitlementService(root=TEST_ROOT)
+        svc.create(
+            memory_path="legacy/path.md",
+            owner="maya",
+            allowed_readers=["reader1"],
+        )
+        assert svc.check_access("legacy/path.md", "reader1") is True
+
     def test_list_for_owner(self):
         svc = EntitlementService(root=TEST_ROOT)
-        svc.create(memory_path="path1", owner="maya")
-        svc.create(memory_path="path2", owner="maya")
-        svc.create(memory_path="path3", owner="other")
+        svc.create(name="A", memory_paths=["path1"], owner="maya")
+        svc.create(name="B", memory_paths=["path2"], owner="maya")
+        svc.create(name="C", memory_paths=["path3"], owner="other")
         assert len(svc.list_for_owner("maya")) == 2
 
     def test_sensitivity_filtering_in_entitlement_changes(self):
         """Changes in entitlements should affect retrieval."""
         svc = EntitlementService(root=TEST_ROOT)
         ent = svc.create(
-            memory_path="path1",
+            name="Revocable Access",
+            memory_paths=["path1"],
             owner="maya",
             scope="private",
         )
@@ -141,7 +202,8 @@ class TestEntitlementService:
 class TestEntitlementAPI:
     def test_create_entitlement_via_api(self):
         resp = client.post("/manage/entitlements", json={
-            "memory_path": "memory/users/maya/semantic/general.md",
+            "name": "Transcript — Term Grades",
+            "memory_paths": ["memory/subjects/maya/MEMORY.md", "memory/subjects/maya/IDENTITY.md"],
             "owner": "maya",
             "scope": "private",
             "sensitivity": "normal",
@@ -149,11 +211,15 @@ class TestEntitlementAPI:
         assert resp.status_code == 200
         data = resp.json()
         assert data["owner"] == "maya"
+        assert data["name"] == "Transcript — Term Grades"
         assert data["entitlement_id"].startswith("ent_")
+        assert len(data["memory_paths"]) == 2
 
     def test_list_entitlements_via_api(self):
         client.post("/manage/entitlements", json={
-            "memory_path": "path1", "owner": "maya",
+            "name": "Test Ent",
+            "memory_paths": ["path1"],
+            "owner": "maya",
         })
         resp = client.get("/manage/entitlements")
         assert resp.status_code == 200
@@ -161,7 +227,8 @@ class TestEntitlementAPI:
 
     def test_check_access_via_api(self):
         client.post("/manage/entitlements", json={
-            "memory_path": "test/path.md",
+            "name": "Tutor Access",
+            "memory_paths": ["test/path.md"],
             "owner": "maya",
             "allowed_readers": ["tutor_sarah"],
         })
@@ -171,6 +238,23 @@ class TestEntitlementAPI:
 
         resp = client.get("/manage/check-access?memory_path=test/path.md&reader_id=stranger")
         assert resp.json()["has_access"] is False
+
+    def test_check_access_directory_via_api(self):
+        client.post("/manage/entitlements", json={
+            "name": "Full Semantic Access",
+            "memory_paths": ["memory/users/maya/semantic/"],
+            "owner": "maya",
+            "allowed_readers": ["tutor_sarah"],
+        })
+        resp = client.get("/manage/check-access?memory_path=memory/users/maya/semantic/math.md&reader_id=tutor_sarah")
+        assert resp.status_code == 200
+        assert resp.json()["has_access"] is True
+
+    def test_memory_paths_endpoint(self):
+        resp = client.get("/manage/memory-paths")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert isinstance(data, list)
 
 
 # --- Embedding indexer with governance ---

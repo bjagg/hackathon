@@ -20,7 +20,10 @@ MEMORY_ROOT = Path(os.environ.get("MEMORY_ROOT", "memory"))
 class MemoryEntitlement(BaseModel):
     """An access entitlement for a specific memory or memory path."""
     entitlement_id: str = Field(default_factory=lambda: f"ent_{uuid4().hex[:8]}")
-    memory_path: str
+    name: str = ""                          # human-friendly name, e.g. "Transcript — Term Grades"
+    memory_paths: list[str] = Field(default_factory=list)  # files and/or directories
+    # Legacy single-path field kept for backwards compatibility
+    memory_path: str = ""
     owner: str
     scope: str = "private"  # private, project, team, global
     sensitivity: str = "normal"
@@ -28,6 +31,14 @@ class MemoryEntitlement(BaseModel):
     purpose_tags: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    def effective_paths(self) -> list[str]:
+        """Return the authoritative path list (prefers memory_paths, falls back to memory_path)."""
+        if self.memory_paths:
+            return self.memory_paths
+        if self.memory_path:
+            return [self.memory_path]
+        return []
 
     def allows(self, reader_id: str) -> bool:
         if reader_id == self.owner:
@@ -38,8 +49,23 @@ class MemoryEntitlement(BaseModel):
             return True
         return False
 
+    def covers_path(self, path: str) -> bool:
+        """Check if this entitlement covers a given memory path (exact or directory prefix)."""
+        for ep in self.effective_paths():
+            if path == ep:
+                return True
+            # Directory-style match: entitlement on "memory/users/maya/" covers files inside
+            if ep.endswith("/") and path.startswith(ep):
+                return True
+            # Also match if the entitlement path is a prefix directory even without trailing slash
+            if not ep.endswith(".md") and path.startswith(ep + "/"):
+                return True
+        return False
+
 
 class EntitlementUpdate(BaseModel):
+    name: Optional[str] = None
+    memory_paths: Optional[list[str]] = None
     scope: Optional[str] = None
     sensitivity: Optional[str] = None
     allowed_readers: Optional[list[str]] = None
@@ -69,14 +95,18 @@ class EntitlementService:
 
     def create(
         self,
-        memory_path: str,
-        owner: str,
+        memory_path: str = "",
+        owner: str = "",
         scope: str = "private",
         sensitivity: str = "normal",
         allowed_readers: list[str] | None = None,
         purpose_tags: list[str] | None = None,
+        name: str = "",
+        memory_paths: list[str] | None = None,
     ) -> MemoryEntitlement:
         ent = MemoryEntitlement(
+            name=name,
+            memory_paths=memory_paths or [],
             memory_path=memory_path,
             owner=owner,
             scope=scope,
@@ -92,7 +122,7 @@ class EntitlementService:
         return self._entitlements.get(entitlement_id)
 
     def get_by_path(self, memory_path: str) -> list[MemoryEntitlement]:
-        return [e for e in self._entitlements.values() if e.memory_path == memory_path]
+        return [e for e in self._entitlements.values() if e.covers_path(memory_path)]
 
     def list_for_owner(self, owner: str) -> list[MemoryEntitlement]:
         return [e for e in self._entitlements.values() if e.owner == owner]
@@ -155,6 +185,40 @@ class EntitlementService:
     def clear(self):
         self._entitlements.clear()
         self._save()
+
+    def scan_memory_paths(self) -> list[dict]:
+        """Scan the memory root and return available files and directories.
+
+        Returns a flat list of entries, each with:
+          - path: relative path from memory root
+          - type: "file" or "directory"
+          - label: human-friendly display name
+        """
+        entries = []
+        if not self.root.exists():
+            return entries
+
+        for item in sorted(self.root.rglob("*")):
+            rel = str(item.relative_to(self.root))
+            # Skip hidden files, __pycache__, .db, .json
+            if any(part.startswith(".") or part == "__pycache__" for part in item.parts):
+                continue
+            if item.suffix in (".db", ".json", ".pyc"):
+                continue
+
+            if item.is_dir():
+                entries.append({
+                    "path": f"memory/{rel}/",
+                    "type": "directory",
+                    "label": f"{rel}/",
+                })
+            elif item.suffix == ".md":
+                entries.append({
+                    "path": f"memory/{rel}",
+                    "type": "file",
+                    "label": rel,
+                })
+        return entries
 
 
 entitlement_service = EntitlementService()

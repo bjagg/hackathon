@@ -14,16 +14,8 @@
             max-width: 1200px;
             margin: 0 auto;
         }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 8px;
-            color: #58a6ff;
-        }
-        .subtitle {
-            color: #8b949e;
-            margin-bottom: 24px;
-            font-size: 14px;
-        }
+        h1 { font-size: 24px; margin-bottom: 8px; color: #58a6ff; }
+        .subtitle { color: #8b949e; margin-bottom: 24px; font-size: 14px; }
         .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .card {
             background: #161b22;
@@ -69,46 +61,23 @@
             margin-top: 16px;
             transition: all 0.15s;
         }
-        .btn-primary {
-            background: #238636;
-            color: white;
-            border-color: #238636;
-        }
+        .btn-primary { background: #238636; color: white; border-color: #238636; }
         .btn-primary:hover { background: #2ea043; }
-        .btn-danger {
-            background: transparent;
-            color: #f85149;
-            border-color: #f85149;
-        }
+        .btn-danger { background: transparent; color: #f85149; border-color: #f85149; }
         .btn-danger:hover { background: #f8514920; }
-        .btn-secondary {
-            background: #21262d;
-            color: #c9d1d9;
-        }
+        .btn-secondary { background: #21262d; color: #c9d1d9; }
         .btn-secondary:hover { background: #30363d; }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
         th {
-            text-align: left;
-            padding: 8px;
+            text-align: left; padding: 8px;
             border-bottom: 1px solid #30363d;
-            color: #8b949e;
-            font-weight: 500;
+            color: #8b949e; font-weight: 500;
         }
-        td {
-            padding: 8px;
-            border-bottom: 1px solid #21262d;
-        }
+        td { padding: 8px; border-bottom: 1px solid #21262d; }
         tr:hover { background: #161b2240; }
         .scope-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
+            display: inline-block; padding: 2px 8px;
+            border-radius: 12px; font-size: 11px; font-weight: 600;
         }
         .scope-private { background: #30363d; color: #8b949e; }
         .scope-project { background: #0d419d40; color: #58a6ff; }
@@ -118,33 +87,143 @@
         .sensitivity-sensitive { color: #d29922; }
         .sensitivity-restricted { color: #f85149; }
         .status-bar {
-            display: flex;
-            gap: 16px;
-            padding: 12px 20px;
-            background: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            font-size: 13px;
+            display: flex; gap: 16px; padding: 12px 20px;
+            background: #161b22; border: 1px solid #30363d;
+            border-radius: 8px; margin-bottom: 20px; font-size: 13px;
         }
         .status-item { color: #8b949e; }
         .status-item strong { color: #58a6ff; }
         .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 12px 20px;
-            border-radius: 8px;
-            font-size: 14px;
-            z-index: 100;
-            opacity: 0;
-            transition: opacity 0.3s;
+            position: fixed; bottom: 20px; right: 20px;
+            padding: 12px 20px; border-radius: 8px;
+            font-size: 14px; z-index: 100;
+            opacity: 0; transition: opacity 0.3s;
         }
         .toast.show { opacity: 1; }
         .toast-success { background: #238636; color: white; }
         .toast-error { background: #da3633; color: white; }
         .full-width { grid-column: 1 / -1; }
         .actions { display: flex; gap: 8px; }
+
+        /* --- Path picker styles --- */
+        .path-picker {
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            background: #0d1117;
+            max-height: 240px;
+            overflow-y: auto;
+            margin-top: 4px;
+        }
+        .path-picker .path-group-label {
+            padding: 6px 12px;
+            font-size: 11px;
+            font-weight: 600;
+            color: #58a6ff;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            background: #161b22;
+            border-bottom: 1px solid #21262d;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .path-picker label.path-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 12px;
+            margin: 0;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: 'SF Mono', Menlo, monospace;
+            color: #c9d1d9;
+            border-bottom: 1px solid #21262d10;
+        }
+        .path-picker label.path-item:hover {
+            background: #1f2937;
+        }
+        .path-picker label.path-item input[type="checkbox"] {
+            accent-color: #58a6ff;
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+        }
+        .path-picker .path-icon {
+            flex-shrink: 0;
+            font-size: 14px;
+            width: 18px;
+            text-align: center;
+        }
+        .path-picker .path-text {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .path-search {
+            width: 100%;
+            padding: 7px 12px;
+            border: none;
+            border-bottom: 1px solid #30363d;
+            background: #0d1117;
+            color: #e1e4e8;
+            font-size: 13px;
+            border-radius: 6px 6px 0 0;
+        }
+        .path-search:focus { outline: none; border-bottom-color: #58a6ff; }
+        .selected-paths {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-top: 6px;
+            min-height: 24px;
+        }
+        .selected-paths .tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px 8px;
+            background: #0d419d40;
+            color: #58a6ff;
+            border-radius: 12px;
+            font-size: 11px;
+            font-family: monospace;
+        }
+        .selected-paths .tag .remove {
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            opacity: 0.6;
+        }
+        .selected-paths .tag .remove:hover { opacity: 1; }
+        .ent-name-cell {
+            font-weight: 600;
+            color: #e1e4e8;
+        }
+        .ent-name-cell small {
+            font-weight: 400;
+            color: #8b949e;
+            font-family: monospace;
+            font-size: 11px;
+        }
+        .path-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+        }
+        .path-tags .mini-tag {
+            display: inline-block;
+            padding: 1px 6px;
+            background: #21262d;
+            border-radius: 4px;
+            font-size: 11px;
+            font-family: monospace;
+            color: #8b949e;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -162,11 +241,19 @@
         <!-- Create entitlement -->
         <div class="card">
             <h2>Create Entitlement</h2>
-            <label>Memory Path</label>
-            <input id="createPath" placeholder="memory/users/maya/semantic/general.md">
+
+            <label>Entitlement Name</label>
+            <input id="createName" placeholder="e.g. Transcript — Term Grades">
 
             <label>Owner</label>
             <input id="createOwner" placeholder="student_maya">
+
+            <label>Memory Paths <span style="color:#8b949e;font-weight:normal;">(select files and/or directories)</span></label>
+            <input class="path-search" id="pathSearch" placeholder="Filter paths..." oninput="filterPaths()">
+            <div class="path-picker" id="pathPicker">
+                <div style="padding:12px;color:#8b949e;text-align:center;">Loading paths...</div>
+            </div>
+            <div class="selected-paths" id="selectedPaths"></div>
 
             <label>Scope</label>
             <select id="createScope">
@@ -196,8 +283,10 @@
         <div class="card">
             <h2>Grant or Revoke Access</h2>
 
-            <label>Entitlement ID</label>
-            <input id="grantEntId" placeholder="ent_abc12345">
+            <label>Entitlement</label>
+            <select id="grantEntSelect" style="margin-bottom:4px;">
+                <option value="">Select an entitlement...</option>
+            </select>
 
             <label>Reader ID</label>
             <input id="grantReaderId" placeholder="tutor_sarah">
@@ -212,9 +301,9 @@
 
             <hr style="border-color: #21262d; margin: 20px 0;">
 
-            <h2>Quick Check</h2>
+            <h2>Quick Access Check</h2>
             <label>Memory Path</label>
-            <input id="checkPath" placeholder="memory/users/maya/semantic/general.md">
+            <input id="checkPath" placeholder="memory/subjects/learner_maya_2026/MEMORY.md">
             <label>Reader ID</label>
             <input id="checkReader" placeholder="tutor_sarah">
             <button class="btn-secondary" onclick="checkAccess()">Check Access</button>
@@ -228,8 +317,8 @@
             <table>
                 <thead>
                     <tr>
-                        <th>ID</th>
-                        <th>Memory Path</th>
+                        <th>Name</th>
+                        <th>Paths</th>
                         <th>Owner</th>
                         <th>Scope</th>
                         <th>Sensitivity</th>
@@ -247,7 +336,10 @@
     <div class="toast" id="toast"></div>
 
     <script>
-        const API = '';  // Same origin
+        const API = '';
+        let allPaths = [];
+        let selectedMemoryPaths = new Set();
+        let allEntitlements = [];
 
         async function apiFetch(path, options = {}) {
             const resp = await fetch(API + path, {
@@ -268,7 +360,8 @@
             return val.split(',').map(s => s.trim()).filter(Boolean);
         }
 
-        // --- Status ---
+        // ─── Status ─────────────────────────────────────────────
+
         async function loadStatus() {
             try {
                 const data = await apiFetch('/pipeline/status');
@@ -281,42 +374,159 @@
             }
         }
 
-        // --- Entitlements CRUD ---
+        // ─── Path picker ────────────────────────────────────────
+
+        async function loadPaths() {
+            allPaths = await apiFetch('/manage/memory-paths');
+            renderPathPicker();
+        }
+
+        function renderPathPicker(filter = '') {
+            const picker = document.getElementById('pathPicker');
+            const lowerFilter = filter.toLowerCase();
+
+            // Group by top-level directory
+            const groups = {};
+            for (const p of allPaths) {
+                if (lowerFilter && !p.path.toLowerCase().includes(lowerFilter) && !p.label.toLowerCase().includes(lowerFilter)) continue;
+                const parts = p.label.split('/');
+                const group = parts.length > 1 ? parts[0] : 'root';
+                if (!groups[group]) groups[group] = [];
+                groups[group].push(p);
+            }
+
+            if (Object.keys(groups).length === 0) {
+                picker.innerHTML = '<div style="padding:12px;color:#8b949e;text-align:center;">No matching paths</div>';
+                return;
+            }
+
+            let html = '';
+            for (const [group, items] of Object.entries(groups).sort()) {
+                html += `<div class="path-group-label">${group}</div>`;
+                for (const item of items) {
+                    const checked = selectedMemoryPaths.has(item.path) ? 'checked' : '';
+                    const icon = item.type === 'directory' ? '&#128193;' : '&#128196;';
+                    html += `
+                        <label class="path-item">
+                            <input type="checkbox" value="${item.path}" ${checked} onchange="togglePath(this)">
+                            <span class="path-icon">${icon}</span>
+                            <span class="path-text">${item.label}</span>
+                        </label>`;
+                }
+            }
+            picker.innerHTML = html;
+        }
+
+        function filterPaths() {
+            const q = document.getElementById('pathSearch').value;
+            renderPathPicker(q);
+        }
+
+        function togglePath(checkbox) {
+            if (checkbox.checked) {
+                selectedMemoryPaths.add(checkbox.value);
+            } else {
+                selectedMemoryPaths.delete(checkbox.value);
+            }
+            renderSelectedPaths();
+        }
+
+        function removePath(path) {
+            selectedMemoryPaths.delete(path);
+            renderSelectedPaths();
+            renderPathPicker(document.getElementById('pathSearch').value);
+        }
+
+        function renderSelectedPaths() {
+            const container = document.getElementById('selectedPaths');
+            if (selectedMemoryPaths.size === 0) {
+                container.innerHTML = '<span style="color:#8b949e;font-size:12px;">No paths selected</span>';
+                return;
+            }
+            container.innerHTML = [...selectedMemoryPaths].map(p => {
+                const short = p.replace('memory/', '');
+                return `<span class="tag">${short}<span class="remove" onclick="removePath('${p}')">&times;</span></span>`;
+            }).join('');
+        }
+
+        // ─── Entitlements CRUD ──────────────────────────────────
+
         async function loadEntitlements() {
             const data = await apiFetch('/manage/entitlements');
+            allEntitlements = data;
             const tbody = document.getElementById('entTableBody');
             if (!data.length) {
                 tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#8b949e;">No entitlements found</td></tr>';
-                return;
+            } else {
+                tbody.innerHTML = data.map(e => {
+                    const displayName = e.name || '<em style="color:#8b949e;">unnamed</em>';
+                    const paths = (e.memory_paths && e.memory_paths.length > 0) ? e.memory_paths : (e.memory_path ? [e.memory_path] : []);
+                    const pathTags = paths.length > 0
+                        ? paths.map(p => `<span class="mini-tag" title="${p}">${p.replace('memory/','')}</span>`).join('')
+                        : '<span style="color:#8b949e;">none</span>';
+                    return `
+                        <tr>
+                            <td class="ent-name-cell">${displayName}<br><small>${e.entitlement_id}</small></td>
+                            <td><div class="path-tags">${pathTags}</div></td>
+                            <td>${e.owner}</td>
+                            <td><span class="scope-badge scope-${e.scope}">${e.scope}</span></td>
+                            <td><span class="sensitivity-${e.sensitivity}">${e.sensitivity}</span></td>
+                            <td>${(e.allowed_readers || []).join(', ') || '<span style="color:#8b949e;">&mdash;</span>'}</td>
+                            <td><button class="btn-danger" style="margin:0;padding:4px 8px;font-size:12px;" onclick="deleteEntitlement('${e.entitlement_id}')">Delete</button></td>
+                        </tr>`;
+                }).join('');
             }
-            tbody.innerHTML = data.map(e => `
-                <tr>
-                    <td style="font-family:monospace;font-size:12px;">${e.entitlement_id}</td>
-                    <td style="font-family:monospace;font-size:12px;">${e.memory_path}</td>
-                    <td>${e.owner}</td>
-                    <td><span class="scope-badge scope-${e.scope}">${e.scope}</span></td>
-                    <td><span class="sensitivity-${e.sensitivity}">${e.sensitivity}</span></td>
-                    <td>${(e.allowed_readers || []).join(', ') || '—'}</td>
-                    <td><button class="btn-danger" style="margin:0;padding:4px 8px;font-size:12px;" onclick="deleteEntitlement('${e.entitlement_id}')">Delete</button></td>
-                </tr>
-            `).join('');
+            // Update the grant/revoke dropdown
+            populateEntitlementSelect();
+        }
+
+        function populateEntitlementSelect() {
+            const sel = document.getElementById('grantEntSelect');
+            sel.innerHTML = '<option value="">Select an entitlement...</option>';
+            for (const e of allEntitlements) {
+                const label = e.name ? `${e.name}` : `${e.entitlement_id}`;
+                const ownerNote = e.owner ? ` (${e.owner})` : '';
+                sel.innerHTML += `<option value="${e.entitlement_id}">${label}${ownerNote}</option>`;
+            }
         }
 
         async function createEntitlement() {
+            const name = document.getElementById('createName').value.trim();
+            const owner = document.getElementById('createOwner').value.trim();
+            const paths = [...selectedMemoryPaths];
+
+            if (!name) {
+                showToast('Name is required', 'error');
+                return;
+            }
+            if (!owner) {
+                showToast('Owner is required', 'error');
+                return;
+            }
+            if (paths.length === 0) {
+                showToast('Select at least one memory path', 'error');
+                return;
+            }
+
             const payload = {
-                memory_path: document.getElementById('createPath').value,
-                owner: document.getElementById('createOwner').value,
+                name,
+                memory_paths: paths,
+                owner,
                 scope: document.getElementById('createScope').value,
                 sensitivity: document.getElementById('createSensitivity').value,
                 allowed_readers: splitCsv(document.getElementById('createReaders').value),
                 purpose_tags: splitCsv(document.getElementById('createPurpose').value),
             };
-            if (!payload.memory_path || !payload.owner) {
-                showToast('Path and owner are required', 'error');
-                return;
-            }
             await apiFetch('/manage/entitlements', { method: 'POST', body: JSON.stringify(payload) });
-            showToast('Entitlement created');
+            showToast(`Entitlement "${name}" created`);
+            // Reset form
+            document.getElementById('createName').value = '';
+            document.getElementById('createOwner').value = '';
+            document.getElementById('createReaders').value = '';
+            document.getElementById('createPurpose').value = '';
+            selectedMemoryPaths.clear();
+            renderSelectedPaths();
+            renderPathPicker(document.getElementById('pathSearch').value);
             loadEntitlements();
             loadStatus();
         }
@@ -329,10 +539,11 @@
         }
 
         async function grantAccess() {
-            const id = document.getElementById('grantEntId').value;
-            const reader = document.getElementById('grantReaderId').value;
-            const purpose = document.getElementById('grantPurpose').value;
-            if (!id || !reader) { showToast('ID and reader required', 'error'); return; }
+            const id = document.getElementById('grantEntSelect').value;
+            const reader = document.getElementById('grantReaderId').value.trim();
+            const purpose = document.getElementById('grantPurpose').value.trim();
+            if (!id) { showToast('Select an entitlement', 'error'); return; }
+            if (!reader) { showToast('Reader ID is required', 'error'); return; }
             await apiFetch(`/manage/entitlements/${id}/grant`, {
                 method: 'POST',
                 body: JSON.stringify({ reader_id: reader, purpose }),
@@ -342,9 +553,10 @@
         }
 
         async function revokeAccess() {
-            const id = document.getElementById('grantEntId').value;
-            const reader = document.getElementById('grantReaderId').value;
-            if (!id || !reader) { showToast('ID and reader required', 'error'); return; }
+            const id = document.getElementById('grantEntSelect').value;
+            const reader = document.getElementById('grantReaderId').value.trim();
+            if (!id) { showToast('Select an entitlement', 'error'); return; }
+            if (!reader) { showToast('Reader ID is required', 'error'); return; }
             await apiFetch(`/manage/entitlements/${id}/revoke`, {
                 method: 'POST',
                 body: JSON.stringify({ reader_id: reader }),
@@ -354,21 +566,24 @@
         }
 
         async function checkAccess() {
-            const path = document.getElementById('checkPath').value;
-            const reader = document.getElementById('checkReader').value;
+            const path = document.getElementById('checkPath').value.trim();
+            const reader = document.getElementById('checkReader').value.trim();
             if (!path || !reader) return;
             const data = await apiFetch(`/manage/check-access?memory_path=${encodeURIComponent(path)}&reader_id=${encodeURIComponent(reader)}`);
             const el = document.getElementById('checkResult');
             if (data.has_access) {
-                el.innerHTML = `<span style="color:#3fb950;">&#10003; ${reader} has access</span>`;
+                el.innerHTML = `<span style="color:#3fb950;">&#10003; ${reader} has access to ${path}</span>`;
             } else {
-                el.innerHTML = `<span style="color:#f85149;">&#10007; ${reader} does NOT have access</span>`;
+                el.innerHTML = `<span style="color:#f85149;">&#10007; ${reader} does NOT have access to ${path}</span>`;
             }
         }
 
-        // Init
+        // ─── Init ───────────────────────────────────────────────
+
         loadStatus();
+        loadPaths();
         loadEntitlements();
+        renderSelectedPaths();
     </script>
 </body>
 </html>
