@@ -11,3 +11,5 @@ memory/entitlements_index.json
 memory_test_*/
 *.egg-info/
 .env
+.claude/
+demo-workshop-keys.txt
